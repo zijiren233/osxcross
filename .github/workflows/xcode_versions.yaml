@@ -1,0 +1,26 @@
+name: Get Xcode Versions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  get-versions:
+    runs-on: macos-14
+    outputs:
+      xcode-versions: ${{ steps.get-versions.outputs.result }}
+    steps:
+      - name: Checkout setup-xcode
+        uses: actions/checkout@v3
+        with:
+          repository: maxim-lobanov/setup-xcode
+          path: setup-xcode
+
+      - name: Install setup-xcode dependencies
+        working-directory: setup-xcode
+        run: npm install
+
+      - name: Get Xcode versions
+        id: get-versions
+        working-directory: setup-xcode/src
+        run: |
+          node -e "require('./xcode-selector').XcodeSelector.prototype.getAllVersions().then(versions => { const formattedVersions = versions.map(v => v.stable ? v.version : `${v.version}-beta`); console.log(JSON.stringify(formattedVersions)); })"
