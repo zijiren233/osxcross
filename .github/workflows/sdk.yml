@@ -27,8 +27,8 @@ jobs:
           xcode-select -p
           xcodebuild -version
           xcodebuild -showsdks
-          ls /Applications | grep -e '^Xcode_[0-9]+(\.[0-9]+)*\.app$' | sort -rV
-          for xcode in $(ls /Applications | grep -e '^Xcode_[0-9]+(\.[0-9]+)*\.app$' | sort -rV); do
+          ls /Applications | grep -E '^Xcode_[0-9]+(\.[0-9]+)*\.app$' | sort -rV
+          for xcode in $(ls /Applications | grep -E '^Xcode_[0-9]+(\.[0-9]+)*\.app$' | sort -rV); do
             sed 's|for SDK in $SDKS; do|for SDK in $SDKS; do\n[ -f "$WDIR/$SDK$SDK_EXT" ] \&\& continue|g' tools/gen_sdk_package.sh | \
             XCODEDIR=/Applications/$xcode SDK_COMPRESSOR=xz bash
           done
