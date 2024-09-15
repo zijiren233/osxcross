@@ -2,77 +2,59 @@ name: Release osxcross
 
 on:
   workflow_dispatch:
-    inputs:
-      xcode_version:
-        description: "Xcode Version to release"
-        type: string
-        required: true
-  workflow_call:
-    inputs:
-      xcode_version:
-        description: "Xcode Version to release"
-        type: string
-        required: true
 
 jobs:
-  package_sdk:
-    name: Package SDK
-    runs-on: macos-14
+  package_sdks:
+    uses: ./.github/workflows/sdk.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        macos_version: [12, 13, 14]
+    with:
+      macos_version: ${{ matrix.macos_version }}
+
+  collect_sdks:
+    name: Collect SDKs
+    runs-on: ubuntu-latest
     outputs:
       SDK_VERSIONS: ${{ steps.get_all_sdk_versions.outputs.SDK_VERSIONS }}
+      RELEASE_VERSION: ${{ steps.get_release_version.outputs.RELEASE_VERSION }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: ${{ inputs.xcode_version }}
-
-      - name: SDK Package
+      - name: Get Release Version
+        id: get_release_version
         run: |
-          xcode-select -p
-          xcodebuild -version
-          xcodebuild -showsdks
-          ls /Applications | grep -e 'Xcode.*\.app'
-          for xcode in $(ls /Applications | grep -e 'Xcode.*\.app'); do
-            ls /Applications/$xcode/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs
-          done
-          SDK_COMPRESSOR=xz bash tools/gen_sdk_package.sh
-          mv *.tar.xz tarballs/
-
-      - name: Upload SDK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.xcode_version }}-sdk
-          path: tarballs
+          echo "RELEASE_VERSION=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
 
       - name: Get all SDK Versions
         id: get_all_sdk_versions
-        run: |
-          declare -a arr=()
-          for sdk in $(cd tarballs &&ls MacOSX*.tar.xz); do
-            sdk_version=$(echo $sdk | sed 's/MacOSX//' | sed 's/.sdk.tar.xz//')
-            arr+=("$sdk_version")
-          done
-          printf -v json '"%s",' "${arr[@]}"
-          json="[${json%,}]"
-          echo "SDK_VERSIONS=$json" >> $GITHUB_OUTPUT
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            execSync('npm install @actions/artifact')
+            const { DefaultArtifactClient } = require('@actions/artifact');
+            const artifact = new DefaultArtifactClient();
+            const sdks = await artifact.listArtifacts();
+            console.log(sdks);
 
   build_osxcross:
     name: Build osxcross
     runs-on: ubuntu-latest
     needs:
-      - package_sdk
+      - collect_sdks
     strategy:
       fail-fast: false
       matrix:
-        sdk_versions: ${{ fromJSON(needs.package_sdk.outputs.SDK_VERSIONS) }}
+        sdk_versions: ${{ fromJSON(needs.collect_sdks.outputs.SDK_VERSIONS) }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Download SDK
         uses: actions/download-artifact@v4
         with:
-          name: ${{ inputs.xcode_version }}-sdk
+          name: sdk
           path: tarballs
 
       - name: Build osxcross
@@ -116,7 +98,7 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.xcode_version }}
+          tag_name: ${{ needs.collect_sdks.outputs.RELEASE_VERSION }}
           draft: false
           prerelease: false
           append_body: false
