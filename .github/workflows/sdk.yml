@@ -27,8 +27,8 @@ jobs:
           xcode-select -p
           xcodebuild -version
           xcodebuild -showsdks
-          ls /Applications | grep -e 'Xcode.*\.app'
-          for xcode in $(ls /Applications | grep -e 'Xcode.*\.app'); do
+          ls /Applications | grep -v 'Xcode.app' | grep -e 'Xcode.*\.app'
+          for xcode in $(ls /Applications | grep -v 'Xcode.app' | grep -e 'Xcode.*\.app'); do
             XCODEDIR=/Applications/$xcode SDK_COMPRESSOR=xz bash tools/gen_sdk_package.sh
           done
           mv *.tar.xz tarballs/
@@ -48,7 +48,7 @@ jobs:
             const files = fs.readdirSync('tarballs');
             for (const file of files) {
               if (file.endsWith('.tar.xz')) {
-                const name = path.basename(file, '.tar.xz');
+                const name = file.replace(/^MacOSX/, '').replace(/\.sdk\.tar\.xz$/, '').replace('.', '-');
                 await artifact.uploadArtifact(name, ['tarballs/' + file], {
                   overwrite: true
                 });
