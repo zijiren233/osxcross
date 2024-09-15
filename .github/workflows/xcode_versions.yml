@@ -1,11 +1,15 @@
 name: Get Xcode Versions
 
 on:
-  workflow_dispatch:
+  workflow_call:
+    outputs:
+      xcode_versions:
+        description: "Xcode versions"
+        value: ${{ jobs.get-xcode-versions.outputs.xcode-versions }}
 
 jobs:
   get-xcode-versions:
-    runs-on: macos-latest
+    runs-on: macos-14
     outputs:
       xcode-versions: ${{ steps.get-versions.outputs.result }}
     steps:
@@ -13,6 +17,7 @@ jobs:
         id: get-versions
         uses: actions/github-script@v7
         with:
+          result-encoding: string
           script: |
             const { execSync } = require('child_process');
             execSync('npm install semver', { stdio: 'inherit' });
@@ -81,4 +86,4 @@ jobs:
             const versions = xcodeVersions.map(version => 
               version.stable ? version.version : `${version.version}-beta`
             );
-            return versions;
+            return JSON.stringify(versions);
