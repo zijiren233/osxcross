@@ -7,10 +7,10 @@ jobs:
   get-versions:
     runs-on: macos-14
     outputs:
-      xcode-versions: ${{ steps.get-versions.outputs.result }}
+      xcode-versions: ${{ steps.get-versions.outputs.xcode-versions }}
     steps:
       - name: Checkout setup-xcode
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: maxim-lobanov/setup-xcode
           path: setup-xcode
@@ -18,9 +18,18 @@ jobs:
       - name: Install setup-xcode dependencies
         working-directory: setup-xcode
         run: npm install
+      - name: Create temporary file
+        run: |
+          cat << EOF > get_xcode_versions.ts
+          import { XcodeSelector } from './xcode-selector';
+          const selector = new XcodeSelector();
+          const versions = await selector.getAllVersions();
+          const formattedVersions = versions.map(v => v.stable ? v.version : v.version + '-beta');
+          console.log('::set-output name=xcode-versions::' + JSON.stringify(formattedVersions));
+          EOF
 
       - name: Get Xcode versions
         id: get-versions
         working-directory: setup-xcode/src
         run: |
-          node -e "require('./xcode-selector').XcodeSelector.prototype.getAllVersions().then(versions => { const formattedVersions = versions.map(v => v.stable ? v.version : v.version + '-beta'); console.log(JSON.stringify(formattedVersions)); })"
+          node get_xcode_versions.ts
