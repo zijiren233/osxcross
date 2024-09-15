@@ -68,7 +68,7 @@ jobs:
         with:
           arch: none
           distro: none
-          base_image: amd64/ubuntu:22.04
+          base_image: amd64/ubuntu:24.04
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --volume "${PWD}:/osxcross"
