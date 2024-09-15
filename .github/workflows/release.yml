@@ -55,7 +55,7 @@ jobs:
       - name: Download SDK
         uses: actions/download-artifact@v4
         with:
-          name: sdk
+          name: ${{ matrix.sdk_versions }}
           path: tarballs
 
       - name: Build osxcross
@@ -92,7 +92,7 @@ jobs:
           run: |
             cd /osxcross
             sed -i -e 's|-march=native||g' build_clang.sh
-            UNATTENDED=1 SDK_VERSION=${{ matrix.sdk_versions }} bash build.sh
+            UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" bash build.sh
             mkdir -p dist
             tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-amd64.tar.gz -C target .
 
