@@ -46,13 +46,38 @@ jobs:
 
             const files = fs.readdirSync('tarballs');
             for (const file of files) {
+              if (!file.startsWith('MacOSX') || !file.endsWith('.sdk.tar.xz')) {
+                continue;
+              }
               const name = file.replace(/^MacOSX/, '').replace(/\.sdk\.tar\.xz$/, '').replace('.', '-');
-              await artifact.uploadArtifact(
-                name,
-                ['tarballs/' + file],
-                '.',
-                {
-                  compressionLevel: 0
+              
+              const maxRetries = 3;
+              let retries = 0;
+              let success = false;
+
+              while (retries < maxRetries && !success) {
+                try {
+                  await artifact.uploadArtifact(
+                    name,
+                    ['tarballs/' + file],
+                    '.',
+                    {
+                      compressionLevel: 0
+                    }
+                  );
+                  success = true;
+                } catch (error) {
+                  console.error(`上传失败，尝试次数：${retries + 1}，错误：${error.message}`);
+                  retries++;
+                  if (retries < maxRetries) {
+                    try {
+                      await artifact.deleteArtifact(name);
+                    } catch (deleteError) {}
+                  }
                 }
-              );
+              }
+
+              if (!success) {
+                console.error(`上传 ${name} 失败，已达到最大重试次数`);
+              }
             }
