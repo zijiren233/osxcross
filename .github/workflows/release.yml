@@ -1,12 +1,18 @@
-name: Build and Release osxcross
+name: Release osxcross
 
 on:
-  push:
-    tags:
-      - "v*"
-
-env:
-  UNAMESPACER: linux-amd64
+  workflow_dispatch:
+    inputs:
+      xcode_version:
+        description: "Xcode Version to release"
+        type: string
+        required: true
+  workflow_call:
+    inputs:
+      xcode_version:
+        description: "Xcode Version to release"
+        type: string
+        required: true
 
 jobs:
   package_sdk:
@@ -19,7 +25,7 @@ jobs:
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: ${{ inputs.xcode_version }}
 
       - name: SDK Package
         run: |
@@ -98,11 +104,12 @@ jobs:
             sed -i -e 's|-march=native||g' build_clang.sh
             UNATTENDED=1 SDK_VERSION=${{ matrix.sdk_versions }} bash build.sh
             mkdir -p dist
-            tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-${{ env.UNAMESPACER }}.tar.gz -C target .
+            tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-amd64.tar.gz -C target .
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.xcode_version }}
           draft: false
           prerelease: false
           append_body: false

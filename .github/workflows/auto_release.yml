@@ -1,0 +1,76 @@
+name: Auto Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check_releases:
+    name: Check for Missing Releases
+    runs-on: ubuntu-latest
+    outputs:
+      missing_tags: ${{ steps.filter_tags.outputs.result }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get Xcode Versions
+        id: get_xcode_versions
+        run: |
+          declare -a arr=()
+          for sdk in $(grep -oE '^\s*([0-9]+\.[0-9]+)\*\)' build.sh | cut -d '*' -f 1 | sort -V | uniq); do
+            arr+=("$sdk")
+          done
+          printf -v json '"%s",' "${arr[@]}"
+          json="[${json%,}]"
+          echo "XCODE_VERSIONS=$json" >> $GITHUB_OUTPUT
+
+      - name: Get Existing GitHub Tags
+        id: get_github_tags
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let allTags = [];
+            let page = 1;
+            let hasNextPage = true;
+
+            while (hasNextPage) {
+              const response = await github.rest.repos.listTags({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+                page: page,
+              });
+              allTags = allTags.concat(response.data.map(tag => tag.name));
+              hasNextPage = response.data.length === 100;
+              page++;
+            }
+
+            return allTags;
+
+      - name: Filter Missing Tags
+        id: filter_tags
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { xcode_versions, github_tags } = process.env
+            const xcodeVersions = JSON.parse(`${xcode_versions}`);
+            const githubTags = JSON.parse(`${github_tags}`);
+
+            const missingTags = xcodeVersions
+              .filter(tag => !githubTags.includes(tag));
+
+            return missingTags;
+        env:
+          xcode_versions: ${{ steps.get_xcode_versions.outputs.xcode_versions }}
+          github_tags: ${{ steps.get_github_tags.outputs.result }}
+
+  build_missing_releases:
+    needs: check_releases
+    if: ${{ needs.check_releases.outputs.missing_tags != '[]' }}
+    uses: ./.github/workflows/release.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: ${{ fromJson(needs.check_releases.outputs.missing_tags) }}
+    with:
+      xcode_version: ${{ matrix.tag }}
