@@ -23,4 +23,4 @@ jobs:
         id: get-versions
         working-directory: setup-xcode/src
         run: |
-          node -e "require('./xcode-selector').XcodeSelector.prototype.getAllVersions().then(versions => { const formattedVersions = versions.map(v => v.stable ? v.version : `${v.version}-beta`); console.log(JSON.stringify(formattedVersions)); })"
+          node -e "require('./xcode-selector').XcodeSelector.prototype.getAllVersions().then(versions => { const formattedVersions = versions.map(v => v.stable ? v.version : v.version + '-beta'); console.log(JSON.stringify(formattedVersions)); })"
