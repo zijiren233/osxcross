@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: package_sdks
     outputs:
-      SDK_VERSIONS: ${{ steps.get_all_sdk_versions.outputs.SDK_VERSIONS }}
+      SDK_VERSIONS: ${{ steps.get_all_sdk_versions.outputs.result }}
       RELEASE_VERSION: ${{ steps.get_release_version.outputs.RELEASE_VERSION }}
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +38,8 @@ jobs:
             const { DefaultArtifactClient } = require('@actions/artifact');
             const artifact = new DefaultArtifactClient();
             const sdks = await artifact.listArtifacts();
-            console.log(sdks);
+            const sdk_versions = sdks.map(sdk => sdk.name);
+            return sdk_versions;
 
   build_osxcross:
     name: Build osxcross
@@ -106,3 +107,4 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             dist/*
+            tarballs/*
