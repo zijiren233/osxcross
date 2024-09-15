@@ -11,7 +11,7 @@ env:
 jobs:
   package_sdk:
     name: Package SDK
-    runs-on: macos-latest
+    runs-on: macos-14
     outputs:
       SDK_VERSIONS: ${{ steps.get_all_sdk_versions.outputs.SDK_VERSIONS }}
     steps:
