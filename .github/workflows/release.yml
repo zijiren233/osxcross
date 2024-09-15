@@ -29,6 +29,13 @@ jobs:
 
       - name: SDK Package
         run: |
+          xcode-select -p
+          xcodebuild -version
+          xcodebuild -showsdks
+          ls /Applications | grep -e 'Xcode.*\.app'
+          for xcode in $(ls /Applications | grep -e 'Xcode.*\.app'); do
+            ls /Applications/$xcode/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs
+          done
           SDK_COMPRESSOR=xz bash tools/gen_sdk_package.sh
           mv *.tar.xz tarballs/
 
