@@ -35,7 +35,7 @@ jobs:
       - name: Upload SDK
         uses: actions/upload-artifact@v4
         with:
-          name: sdk
+          name: ${{ inputs.xcode_version }}-sdk
           path: tarballs
 
       - name: Get all SDK Versions
@@ -65,7 +65,7 @@ jobs:
       - name: Download SDK
         uses: actions/download-artifact@v4
         with:
-          name: sdk
+          name: ${{ inputs.xcode_version }}-sdk
           path: tarballs
 
       - name: Build osxcross
