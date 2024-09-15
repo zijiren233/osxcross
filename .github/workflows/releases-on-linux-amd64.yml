@@ -1,0 +1,91 @@
+name: Build and Release osxcross
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  UNAMESPACER: linux-amd64
+
+jobs:
+  package_sdk:
+    name: Build
+    runs-on: macos-latest
+    steps:
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: SDK Package
+        run: |
+          SDK_COMPRESSOR=xz bash tools/gen_sdk_package.sh
+          mv *.tar.xz tarballs/
+
+      - name: Upload SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk
+          path: tarballs
+
+  build_osxcross:
+    name: Build osxcross
+    runs-on: ubuntu-latest
+    needs:
+      - package_sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download SDK
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk
+          path: tarballs
+
+      - name: Build osxcross
+        uses: uraimo/run-on-arch-action@v2
+        id: build
+        with:
+          arch: none
+          distro: none
+          base_image: amd64/ubuntu:22.04
+          githubToken: ${{ github.token }}
+          dockerRunArgs: |
+            --volume "${PWD}:/osxcross"
+          shell: /bin/bash
+          install: |
+            apt-get update && apt-get install -y \
+              curl \
+              clang \
+              make \
+              cmake \
+              git \
+              patch \
+              python3 \
+              libssl-dev \
+              lzma-dev \
+              libxml2-dev \
+              xz-utils \
+              bzip2 \
+              cpio \
+              bzip2 \
+              zlib1g-dev \
+              bash \
+              llvm-dev \
+              uuid-dev
+          run: |
+            cd /osxcross
+            sed -i -e 's|-march=native||g' build_clang.sh
+            UNATTENDED=1 OSX_VERSION_MIN=10.6 bash build.sh
+            mkdir -p dist
+            tar -zcf dist/osxcross-${OSX_SDK}-${{ env.UNAMESPACER }}.tar.gz -C target .
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          append_body: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/*.*
