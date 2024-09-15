@@ -16,6 +16,7 @@ jobs:
           script: |
             const { execSync } = require('child_process');
             execSync('npm install semver', { stdio: 'inherit' });
+            execSync('npm install plist', { stdio: 'inherit' });
             const fs = require('fs');
             const path = require('path');
             const semver = require('semver');
