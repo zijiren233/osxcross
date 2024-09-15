@@ -46,12 +46,13 @@ jobs:
 
             const files = fs.readdirSync('tarballs');
             for (const file of files) {
-              console.log(file);
-              if (file.endsWith('.tar.xz')) {
-                const name = file.replace(/^MacOSX/, '').replace(/\.sdk\.tar\.xz$/, '').replace('.', '-');
-                console.log(name);
-                await artifact.uploadArtifact(name, ['tarballs/' + file], {
-                  overwrite: true
-                });
-              }
+              const name = file.replace(/^MacOSX/, '').replace(/\.sdk\.tar\.xz$/, '').replace('.', '-');
+              await artifact.uploadArtifact(
+                name,
+                ['tarballs/' + file],
+                '.',
+                {
+                  compressionLevel: 0
+                }
+              );
             }
