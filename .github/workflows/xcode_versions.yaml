@@ -4,32 +4,78 @@ on:
   workflow_dispatch:
 
 jobs:
-  get-versions:
-    runs-on: macos-14
+  get-xcode-versions:
+    runs-on: macos-latest
     outputs:
-      xcode-versions: ${{ steps.get-versions.outputs.xcode-versions }}
+      xcode-versions: ${{ steps.get-versions.outputs.result }}
     steps:
-      - name: Checkout setup-xcode
-        uses: actions/checkout@v4
-        with:
-          repository: maxim-lobanov/setup-xcode
-          path: setup-xcode
-
-      - name: Install setup-xcode dependencies
-        working-directory: setup-xcode
-        run: npm install
-      - name: Create temporary file
-        run: |
-          cat << EOF > get_xcode_versions.ts
-          import { XcodeSelector } from './xcode-selector';
-          const selector = new XcodeSelector();
-          const versions = await selector.getAllVersions();
-          const formattedVersions = versions.map(v => v.stable ? v.version : v.version + '-beta');
-          console.log('::set-output name=xcode-versions::' + JSON.stringify(formattedVersions));
-          EOF
-
       - name: Get Xcode versions
         id: get-versions
-        working-directory: setup-xcode/src
-        run: |
-          node get_xcode_versions.ts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const semver = require('semver');
+            const plist = require('plist');
+
+            function parsePlistFile(plistPath) {
+              if (!fs.existsSync(plistPath)) {
+                return null;
+              }
+              const plistRawContent = fs.readFileSync(plistPath, "utf8");
+              return plist.parse(plistRawContent);
+            }
+
+            function getInstalledXcodeApps() {
+              const applicationsDirectory = "/Applications";
+              const xcodeAppFilenameRegex = /^Xcode.*\.app$/;
+              const allApplicationsChildItems = fs.readdirSync(applicationsDirectory, {
+                encoding: "utf8",
+                withFileTypes: true,
+              });
+              const allApplicationsRealItems = allApplicationsChildItems.filter(
+                child => !child.isSymbolicLink() && child.isDirectory(),
+              );
+              const xcodeAppsItems = allApplicationsRealItems.filter(app =>
+                xcodeAppFilenameRegex.test(app.name),
+              );
+              return xcodeAppsItems.map(child => path.join(applicationsDirectory, child.name));
+            }
+
+            function getXcodeReleaseType(xcodeRootPath) {
+              const licenseInfo = parsePlistFile(
+                path.join(xcodeRootPath, "Contents", "Resources", "LicenseInfo.plist"),
+              );
+              const licenseType = licenseInfo?.licenseType?.toString()?.toLowerCase();
+              if (!licenseType) {
+                return "Unknown";
+              }
+              return licenseType.includes("beta") ? "Beta" : "GM";
+            }
+
+            function getXcodeVersionInfo(xcodeRootPath) {
+              const versionInfo = parsePlistFile(path.join(xcodeRootPath, "Contents", "version.plist"));
+              const xcodeVersion = semver.coerce(versionInfo?.CFBundleShortVersionString?.toString());
+              const xcodeBuildNumber = versionInfo?.ProductBuildVersion?.toString();
+              if (!xcodeVersion || !semver.valid(xcodeVersion)) {
+                return null;
+              }
+              const releaseType = getXcodeReleaseType(xcodeRootPath);
+              return {
+                version: xcodeVersion.version,
+                buildNumber: xcodeBuildNumber,
+                releaseType: releaseType,
+                stable: releaseType === "GM",
+                path: xcodeRootPath,
+              };
+            }
+
+            const potentialXcodeApps = getInstalledXcodeApps().map(appPath =>
+              getXcodeVersionInfo(appPath),
+            );
+            const xcodeVersions = potentialXcodeApps.filter(app => !!app);
+            const versions = xcodeVersions.map(version => 
+              version.stable ? version.version : `${version.version}-beta`
+            );
+            return versions;
