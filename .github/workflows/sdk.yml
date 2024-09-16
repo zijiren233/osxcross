@@ -21,13 +21,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get Release Version
-        id: get_release_version
-        run: |
-          echo "RELEASE_VERSION=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@master
+        with:
+          version: 18
+          directory: ${{ runner.temp }}/llvm
+
+      - name: Symlink libclang.so (Linux)
+        run: sudo ln -s libclang-11.so.1 /lib/x86_64-linux-gnu/libclang.so
+        working-directory: ${{ env.LLVM_PATH }}/lib
 
       - name: SDK Package
         run: |
+          ls ${{ env.LLVM_PATH }}
+          ls ${{ env.LLVM_PATH }}/bin
+          ${{ env.LLVM_PATH }}/bin/clang -v
           xcode-select -p
           xcodebuild -version
           xcodebuild -showsdks

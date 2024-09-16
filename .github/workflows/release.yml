@@ -40,12 +40,6 @@ jobs:
           name: ${{ matrix.sdk_versions }}
           path: tarballs
 
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@master
-        with:
-          version: 18
-          directory: ${{ runner.temp }}/llvm
-
       - name: Install Dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y \
@@ -66,6 +60,16 @@ jobs:
             zlib1g-dev \
             llvm-dev \
             uuid-dev
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@master
+        with:
+          version: 18
+          directory: ${{ runner.temp }}/llvm
+
+      - name: Symlink libclang.so (Linux)
+        run: sudo ln -s libclang-11.so.1 /lib/x86_64-linux-gnu/libclang.so
+        working-directory: ${{ env.LLVM_PATH }}/lib
 
       - name: Build osxcross
         id: build
