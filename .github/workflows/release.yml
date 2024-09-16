@@ -49,7 +49,7 @@ jobs:
         with:
           arch: none
           distro: none
-          base_image: ${{ matrix.arch }}/debian:12
+          base_image: ${{ matrix.arch }}/ubuntu:24.04
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --volume "${PWD}:/osxcross"
@@ -76,9 +76,9 @@ jobs:
               uuid-dev
           run: |
             cd /osxcross
-            sed -i -e 's|-march=native||g' build_clang.sh
+            sed -i -e 's|-march=native|-static --static|g' build_clang.sh
             ls tarballs
-            UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" bash build.sh
+            UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} JOBS=$(nproc) | sed 's/-/./g')" bash build.sh
             mkdir -p dist
             tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-${{ matrix.arch }}.tar.gz -C target .
 
