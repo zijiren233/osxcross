@@ -33,11 +33,7 @@ jobs:
         sdk_versions: ${{ fromJSON(needs.package_sdks.outputs.SDK_VERSIONS) }}
         arch:
           - amd64
-          - arm32v7
           - arm64v8
-          - ppc64le
-          - riscv64
-          - s390x
     steps:
       - uses: actions/checkout@v4
 
@@ -53,7 +49,7 @@ jobs:
         with:
           arch: none
           distro: none
-          base_image: ${{ matrix.arch }}/ubuntu:24.04
+          base_image: ${{ matrix.arch }}/debian:12
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --volume "${PWD}:/osxcross"
