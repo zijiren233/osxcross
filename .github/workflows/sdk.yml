@@ -93,7 +93,6 @@ jobs:
               if (name === 'MacOSX') {
                 continue;
               }
-              name = name.replace(/^MacOSX/, '');
 
               const maxRetries = 3;
               let retries = 0;
@@ -102,7 +101,7 @@ jobs:
               while (retries < maxRetries && !success) {
                 try {
                   await artifact.uploadArtifact(
-                    name,
+                    name.replace(/^MacOSX/, ''),
                     [file],
                     '.',
                     {
