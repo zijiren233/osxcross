@@ -71,14 +71,12 @@ jobs:
               cpio \
               bzip2 \
               zlib1g-dev \
-              bash \
               llvm-dev \
               uuid-dev
           run: |
             cd /osxcross
-            sed -i -e 's|-march=native|-static --static|g' build_clang.sh
             ls tarballs
-            UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} JOBS=$(nproc) | sed 's/-/./g')" bash build.sh
+            UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
             mkdir -p dist
             tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-${{ matrix.arch }}.tar.gz -C target .
 
