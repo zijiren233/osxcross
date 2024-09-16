@@ -8,26 +8,6 @@ on:
         value: ${{ jobs.collect_sdks.outputs.SDK_VERSIONS }}
 
 jobs:
-  setup:
-    name: Setup
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@master
-        with:
-          version: 18
-          directory: ${{ runner.temp }}/llvm
-
-      - name: Symlink libclang.so (Linux)
-        run: sudo ln -s libclang-11.so.1 /lib/x86_64-linux-gnu/libclang.so
-        working-directory: ${{ env.LLVM_PATH }}/lib
-
-      - run: |
-          sudo apt update && sudo apt install -y libtinfo5
-          ls ${{ env.LLVM_PATH }}
-          ls ${{ env.LLVM_PATH }}/bin
-          ${{ env.LLVM_PATH }}/bin/clang -v
-
   package_sdk:
     name: Package SDK
     strategy:
