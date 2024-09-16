@@ -31,9 +31,6 @@ jobs:
       fail-fast: false
       matrix:
         sdk_versions: ${{ fromJSON(needs.package_sdks.outputs.SDK_VERSIONS) }}
-        arch:
-          - amd64
-          - arm64v8
     steps:
       - uses: actions/checkout@v4
 
@@ -42,43 +39,34 @@ jobs:
         with:
           name: ${{ matrix.sdk_versions }}
           path: tarballs
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            curl \
+            clang \
+            make \
+            cmake \
+            git \
+            patch \
+            python3 \
+            libssl-dev \
+            lzma-dev \
+            libxml2-dev \
+            xz-utils \
+            bzip2 \
+            cpio \
+            bzip2 \
+            zlib1g-dev \
+            llvm-dev \
+            uuid-dev
 
       - name: Build osxcross
-        uses: uraimo/run-on-arch-action@v2
         id: build
-        with:
-          arch: none
-          distro: none
-          base_image: ${{ matrix.arch }}/ubuntu:24.04
-          githubToken: ${{ github.token }}
-          dockerRunArgs: |
-            --volume "${PWD}:/osxcross"
-          shell: /bin/bash
-          install: |
-            apt-get update && apt-get install -y \
-              curl \
-              clang \
-              make \
-              cmake \
-              git \
-              patch \
-              python3 \
-              libssl-dev \
-              lzma-dev \
-              libxml2-dev \
-              xz-utils \
-              bzip2 \
-              cpio \
-              bzip2 \
-              zlib1g-dev \
-              llvm-dev \
-              uuid-dev
-          run: |
-            cd /osxcross
-            ls tarballs
-            UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
-            mkdir -p dist
-            tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-${{ matrix.arch }}.tar.gz -C target .
+        run: |
+          ls tarballs
+          UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
+          mkdir -p dist
+          tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-amd64.tar.gz -C target .
 
       - name: Release
         uses: softprops/action-gh-release@v2
