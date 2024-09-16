@@ -23,6 +23,7 @@ jobs:
         working-directory: ${{ env.LLVM_PATH }}/lib
 
       - run: |
+          sudo apt update && sudo apt install -y libtinfo5
           ls ${{ env.LLVM_PATH }}
           ls ${{ env.LLVM_PATH }}/bin
           ${{ env.LLVM_PATH }}/bin/clang -v

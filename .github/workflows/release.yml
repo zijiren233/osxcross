@@ -59,7 +59,8 @@ jobs:
             bzip2 \
             zlib1g-dev \
             llvm-dev \
-            uuid-dev
+            uuid-dev \
+            libtinfo5
 
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@master
