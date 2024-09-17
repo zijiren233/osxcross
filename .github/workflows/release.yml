@@ -82,7 +82,7 @@ jobs:
           ls tarballs
           UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
           mkdir -p dist
-          tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-amd64-$(echo ${{ matrix.ubuntu_version }} | sed 's/\.//g').tar.gz -C target .
+          tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-amd64-gnu-ubuntu-${{ matrix.ubuntu_version }}.tar.gz -C target .
 
       - name: Release
         uses: softprops/action-gh-release@v2
