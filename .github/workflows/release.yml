@@ -28,6 +28,7 @@ jobs:
       matrix:
         sdk_versions: ${{ fromJSON(needs.package_sdks.outputs.SDK_VERSIONS) }}
         ubuntu_version:
+          - 18.04
           - 20.04
           - 22.04
           - 24.04
@@ -83,8 +84,10 @@ jobs:
             else
               apt install -y libtinfo5
             fi
+            curl -sSL https://github.com/Kitware/CMake/releases/download/v3.30.3/cmake-3.30.3-linux-x86_64.tar.gz | tar -xzC /opt
           run: |
             export PATH=/llvm/bin:$PATH
+            export PATH=/opt/cmake-3.30.3-linux-x86_64/bin:$PATH
             cd /osxcross
             ls tarballs
             UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
