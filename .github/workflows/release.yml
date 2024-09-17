@@ -21,6 +21,37 @@ jobs:
         run: |
           echo "RELEASE_VERSION=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
 
+      - name: Download SDKs
+        id: download_sdks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            execSync('npm install @actions/artifact');
+            const { DefaultArtifactClient } = require('@actions/artifact');
+            const artifact = new DefaultArtifactClient();
+            const fs = require('fs');
+
+            const allArtifacts = await artifact.listArtifacts();
+            const sdkArtifacts = allArtifacts.artifacts.filter(a => !a.name.startsWith('sdk-'));
+            for (const sdkArtifact of sdkArtifacts) {
+              console.log('download', sdkArtifact);
+              await artifact.downloadArtifact(sdkArtifact.id, {
+                path: 'tarballs'
+              });
+            }
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_release_version.outputs.RELEASE_VERSION }}
+          draft: false
+          prerelease: false
+          append_body: false
+          fail_on_unmatched_files: true
+          files: |
+            tarballs/*
+
   build_osxcross:
     name: Build osxcross
     strategy:
@@ -104,4 +135,3 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             dist/*
-            tarballs/*
