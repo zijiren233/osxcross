@@ -44,45 +44,47 @@ jobs:
           name: ${{ matrix.sdk_versions }}
           path: tarballs
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y \
-            curl \
-            clang \
-            make \
-            cmake \
-            git \
-            patch \
-            python3 \
-            libssl-dev \
-            lzma-dev \
-            libxml2-dev \
-            xz-utils \
-            bzip2 \
-            cpio \
-            zlib1g-dev \
-            llvm-dev \
-            uuid-dev
-
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@master
-        with:
-          version: 18
-          directory: ${{ runner.temp }}/llvm
-
-      - name: Symlink libclang.so (Linux)
-        run: sudo ln -s libclang-11.so.1 /lib/x86_64-linux-gnu/libclang.so
-        working-directory: ${{ env.LLVM_PATH }}/lib
-
       - name: Build osxcross
+        uses: uraimo/run-on-arch-action@v2
         id: build
-        run: |
-          wget http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.4-2_amd64.deb && sudo dpkg -i libtinfo5_6.4-2_amd64.deb
-          export PATH=${{ env.LLVM_PATH }}/bin:$PATH
-          ls tarballs
-          UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
-          mkdir -p dist
-          tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-amd64-gnu-ubuntu-${{ matrix.ubuntu_version }}.tar.gz -C target .
+        with:
+          arch: none
+          distro: none
+          base_image: amd64/ubuntu:${{ matrix.ubuntu_version }}
+          githubToken: ${{ github.token }}
+          dockerRunArgs: |
+            --volume "${PWD}:/osxcross"
+          shell: /bin/bash
+          install: |
+            apt-get update && apt-get install -y \
+              curl \
+              clang \
+              make \
+              cmake \
+              git \
+              patch \
+              python3 \
+              libssl-dev \
+              lzma-dev \
+              libxml2-dev \
+              xz-utils \
+              bzip2 \
+              cpio \
+              zlib1g-dev \
+              llvm-dev \
+              uuid-dev
+            wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
+            mkdir -p /llvm
+            tar -xf clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz -C /llvm --strip-components=1
+            rm -rf clang*.tar.xz
+            wget http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.4-2_amd64.deb && sudo dpkg -i libtinfo5_6.4-2_amd64.deb
+          run: |
+            export PATH=/llvm/bin:$PATH
+            cd /osxcross
+            ls tarballs
+            UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
+            mkdir -p dist
+            tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-amd64-gnu-ubuntu-${{ matrix.ubuntu_version }}.tar.gz -C target .
 
       - name: Release
         uses: softprops/action-gh-release@v2
