@@ -59,6 +59,7 @@ jobs:
           install: |
             apt-get update && apt-get install -y \
               curl \
+              wget \
               clang \
               make \
               cmake \
