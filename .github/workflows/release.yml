@@ -28,6 +28,7 @@ jobs:
       matrix:
         sdk_versions: ${{ fromJSON(needs.package_sdks.outputs.SDK_VERSIONS) }}
         ubuntu_version:
+          - 18.04
           - 20.04
           - 22.04
           - 24.04
