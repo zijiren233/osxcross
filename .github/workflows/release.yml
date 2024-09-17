@@ -30,6 +30,7 @@ jobs:
         ubuntu_version:
           - 20.04
           - 22.04
+          - 24.04
     runs-on: ubuntu-${{ matrix.ubuntu_version }}
     needs:
       - package_sdks
@@ -59,11 +60,9 @@ jobs:
             xz-utils \
             bzip2 \
             cpio \
-            bzip2 \
             zlib1g-dev \
             llvm-dev \
-            uuid-dev \
-            libtinfo5
+            uuid-dev
 
       - name: Install LLVM and Clang
         uses: KyleMayes/install-llvm-action@master
@@ -78,6 +77,7 @@ jobs:
       - name: Build osxcross
         id: build
         run: |
+          wget http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.4-2_amd64.deb && sudo dpkg -i libtinfo5_6.4-2_amd64.deb
           export PATH=${{ env.LLVM_PATH }}/bin:$PATH
           ls tarballs
           UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
