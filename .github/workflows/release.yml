@@ -115,6 +115,7 @@ jobs:
             export PATH=/opt/cmake-3.30.3-linux-x86_64/bin:$PATH
             cd /osxcross
             export TARGET_DIR=/usr/local/osxcross
+            export IPHONEOS_DEPLOYMENT_TARGET=5.0
             UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
             mkdir -p dist
             tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-amd64-gnu-ubuntu-${{ matrix.ubuntu_version }}.tar.gz -C $TARGET_DIR .
