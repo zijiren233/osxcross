@@ -57,7 +57,10 @@ jobs:
           - 20.04
           - 22.04
           - 24.04
-    runs-on: ubuntu-latest
+        runs-on:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
     needs:
       - package_sdks
       - release_sdks
@@ -76,7 +79,7 @@ jobs:
         with:
           arch: none
           distro: none
-          base_image: amd64/ubuntu:${{ matrix.ubuntu_version }}
+          base_image: ubuntu:${{ matrix.ubuntu_version }}
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --volume "${PWD}:/osxcross"
@@ -100,25 +103,43 @@ jobs:
               zlib1g-dev \
               llvm-dev \
               uuid-dev
-            wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
             mkdir -p /llvm
-            tar -xf clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz -C /llvm --strip-components=1
-            rm -rf clang*.tar.xz
-            if [ "${{ matrix.ubuntu_version }}" = "24.04" ]; then
-              wget http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb && dpkg -i libtinfo5_6.3-2_amd64.deb && rm libtinfo5_6.3-2_amd64.deb
+            mkdir -p /cmake
+            if [ "${{ runner.arch }}" = "X64" ]; then
+              wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
+              tar -xf clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz -C /llvm --strip-components=1
+              rm -rf clang*.tar.xz
+              if [ "${{ matrix.ubuntu_version }}" = "24.04" ]; then
+                wget https://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb && dpkg -i libtinfo5_6.3-2_amd64.deb && rm libtinfo5_6.3-2_amd64.deb
+              else
+                apt install -y libtinfo5
+              fi
+              curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz | tar -xz -C /cmake --strip-components=1
+            elif [ "${{ runner.arch }}" = "ARM64" ]; then
+              wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz
+              tar -xf clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz -C /llvm --strip-components=1
+              rm -rf clang*.tar.xz
+              curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-aarch64.tar.gz | tar -xz -C /cmake --strip-components=1
             else
-              apt install -y libtinfo5
+              echo "Unsupported architecture: ${{ runner.arch }}" >&2
+              exit 1
             fi
-            curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz | tar -xzC /opt
           run: |
             export PATH=/llvm/bin:$PATH
-            export PATH=/opt/cmake-3.31.8-linux-x86_64/bin:$PATH
+            export PATH=/cmake/bin:$PATH
             cd /osxcross
             export TARGET_DIR=/usr/local/osxcross
             export IPHONEOS_DEPLOYMENT_TARGET=5.0
             UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
             mkdir -p dist
-            tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-amd64-gnu-ubuntu-${{ matrix.ubuntu_version }}.tar.gz -C $TARGET_DIR .
+            if [ "${{ runner.arch }}" = "X64" ]; then
+              tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-x86_64-gnu-ubuntu-${{ matrix.ubuntu_version }}.tar.gz -C $TARGET_DIR .
+            elif [ "${{ runner.arch }}" = "ARM64" ]; then
+              tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-aarch64-gnu-ubuntu-${{ matrix.ubuntu_version }}.tar.gz -C $TARGET_DIR .
+            else
+              echo "Unsupported architecture: ${{ runner.arch }}" >&2
+              exit 1
+            fi
 
       - name: Release
         uses: softprops/action-gh-release@v2
