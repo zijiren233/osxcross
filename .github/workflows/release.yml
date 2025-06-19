@@ -79,6 +79,9 @@ jobs:
           #!/bin/bash
           set -e
 
+          echo "Building osxcross for Ubuntu $1 with SDK $2"
+          echo "Architecture: $(uname -m)"
+
           # Update package list and install dependencies
           apt-get update && apt-get install -y \
             curl \
@@ -102,7 +105,7 @@ jobs:
           # Download and install LLVM/Clang
           mkdir -p /llvm
           mkdir -p /cmake
-          if [ "$(uname -m)" = "x86_64" ]; then
+          if [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "amd64" ]; then
             wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
             tar -xf clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz -C /llvm --strip-components=1
             rm -rf clang*.tar.xz
@@ -112,11 +115,14 @@ jobs:
               apt install -y libtinfo5
             fi
             curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz | tar -xz -C /cmake --strip-components=1
-          elif [ "$(uname -m)" = "aarch64" ]; then
+          elif [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
             wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz
             tar -xf clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz -C /llvm --strip-components=1
             rm -rf clang*.tar.xz
             curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-aarch64.tar.gz | tar -xz -C /cmake --strip-components=1
+          else
+            echo "Unsupported architecture: $(uname -m)"
+            exit 1
           fi
 
           # Set up environment
@@ -130,10 +136,13 @@ jobs:
 
           # Create distribution package
           mkdir -p dist
-          if [ "$(uname -m)" = "x86_64" ]; then
+          if [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "amd64" ]; then
             tar -zcf dist/osxcross-$2-linux-x86_64-gnu-ubuntu-$1.tar.gz -C $TARGET_DIR .
-          elif [ "$(uname -m)" = "aarch64" ]; then
+          elif [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
             tar -zcf dist/osxcross-$2-linux-aarch64-gnu-ubuntu-$1.tar.gz -C $TARGET_DIR .
+          else
+            echo "Unsupported architecture: $(uname -m)"
+            exit 1
           fi
           EOF
 
