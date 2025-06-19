@@ -100,52 +100,31 @@ jobs:
             cpio \
             zlib1g-dev \
             llvm-dev \
-            uuid-dev
+            uuid-dev \
+            lsb-release \
+            software-properties-common \
+            gnupg
 
-          # Download and install LLVM/Clang
-          mkdir -p /llvm
+          # Install LLVM/Clang
+          bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
+          update-alternatives --install /usr/bin/clang clang "$(ls /usr/bin/clang-1*)" 100
+          update-alternatives --install /usr/bin/clang++ clang++ "$(ls /usr/bin/clang++-1*)" 100
+
+          # Download and install CMake
           mkdir -p /cmake
           if [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "amd64" ]; then
-            wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
-            tar -xf clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz -C /llvm --strip-components=1
-            rm -rf clang*.tar.xz
-            if [ "$1" = "24.04" ]; then
-              wget https://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb && dpkg -i libtinfo5_6.3-2_amd64.deb && rm libtinfo5_6.3-2_amd64.deb
-            else
-              apt install -y libtinfo5
-            fi
             curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz | tar -xz -C /cmake --strip-components=1
           elif [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
-            if [ "$1" = "18.04" ]; then
-              apt install -y clang-10
-              update-alternatives --install /usr/bin/clang clang /usr/bin/clang-10 100
-              update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-10 100
-            elif [ "$1" = "20.04" ]; then
-              apt install -y clang-12
-              update-alternatives --install /usr/bin/clang clang /usr/bin/clang-12 100
-              update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-12 100
-            elif [ "$1" = "22.04" ]; then
-              apt install -y clang-15
-              update-alternatives --install /usr/bin/clang clang /usr/bin/clang-15 100
-              update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-15 100
-            else
-              wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz
-              tar -xf clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz -C /llvm --strip-components=1
-              rm -rf clang*.tar.xz
-            fi
             curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-aarch64.tar.gz | tar -xz -C /cmake --strip-components=1
           else
             echo "Unsupported architecture: $(uname -m)"
             exit 1
           fi
-
-          # Set up environment
-          export PATH=/llvm/bin:$PATH
           export PATH=/cmake/bin:$PATH
-          export TARGET_DIR=/usr/local/osxcross
-          export IPHONEOS_DEPLOYMENT_TARGET=5.0
 
           # Build osxcross
+          export TARGET_DIR=/usr/local/osxcross
+          export IPHONEOS_DEPLOYMENT_TARGET=5.0
           UNATTENDED=1 SDK_VERSION="$(echo $2 | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
 
           # Create distribution package
