@@ -109,10 +109,10 @@ jobs:
             else
               apt install -y libtinfo5
             fi
-            curl -sSL https://github.com/Kitware/CMake/releases/download/v3.30.3/cmake-3.30.3-linux-x86_64.tar.gz | tar -xzC /opt
+            curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz | tar -xzC /opt
           run: |
             export PATH=/llvm/bin:$PATH
-            export PATH=/opt/cmake-3.30.3-linux-x86_64/bin:$PATH
+            export PATH=/opt/cmake-3.31.8-linux-x86_64/bin:$PATH
             cd /osxcross
             export TARGET_DIR=/usr/local/osxcross
             export IPHONEOS_DEPLOYMENT_TARGET=5.0
