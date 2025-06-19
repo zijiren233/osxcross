@@ -105,7 +105,7 @@ jobs:
             tar -xf clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz -C /llvm --strip-components=1
             rm -rf clang*.tar.xz
             if [ "${{ matrix.ubuntu_version }}" = "24.04" ]; then
-              wget http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.4-2_amd64.deb && dpkg -i libtinfo5_6.4-2_amd64.deb && rm libtinfo5_6.4-2_amd64.deb
+              wget http://archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2_amd64.deb && dpkg -i libtinfo5_6.3-2_amd64.deb && rm libtinfo5_6.3-2_amd64.deb
             else
               apt install -y libtinfo5
             fi
@@ -116,7 +116,7 @@ jobs:
             cd /osxcross
             export TARGET_DIR=/usr/local/osxcross
             export IPHONEOS_DEPLOYMENT_TARGET=5.0
-            OCDEBUG=1 UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
+            UNATTENDED=1 SDK_VERSION="$(echo ${{ matrix.sdk_versions }} | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
             mkdir -p dist
             tar -zcf dist/osxcross-${{ matrix.sdk_versions }}-linux-amd64-gnu-ubuntu-${{ matrix.ubuntu_version }}.tar.gz -C $TARGET_DIR .
 
