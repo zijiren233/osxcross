@@ -83,10 +83,10 @@ jobs:
           echo "Architecture: $(uname -m)"
 
           # Update package list and install dependencies
+          export DEBIAN_FRONTEND=noninteractive
           apt-get update && apt-get install -y \
             curl \
             wget \
-            clang \
             make \
             cmake \
             git \
@@ -116,9 +116,23 @@ jobs:
             fi
             curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz | tar -xz -C /cmake --strip-components=1
           elif [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
-            wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz
-            tar -xf clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz -C /llvm --strip-components=1
-            rm -rf clang*.tar.xz
+            if [ "$1" = "18.04" ]; then
+              apt install -y clang-10
+              update-alternatives --install /usr/bin/clang clang /usr/bin/clang-10 100
+              update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-10 100
+            elif [ "$1" = "20.04" ]; then
+              apt install -y clang-12
+              update-alternatives --install /usr/bin/clang clang /usr/bin/clang-12 100
+              update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-12 100
+            elif [ "$1" = "22.04" ]; then
+              apt install -y clang-15
+              update-alternatives --install /usr/bin/clang clang /usr/bin/clang-15 100
+              update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-15 100
+            else
+              wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz
+              tar -xf clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz -C /llvm --strip-components=1
+              rm -rf clang*.tar.xz
+            fi
             curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-aarch64.tar.gz | tar -xz -C /cmake --strip-components=1
           else
             echo "Unsupported architecture: $(uname -m)"
