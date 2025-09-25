@@ -107,7 +107,7 @@ jobs:
           # Install LLVM/Clang
           bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
           update-alternatives --install /usr/bin/clang clang "$(ls /usr/bin/clang-[21]*)" 100
-          update-alternatives --install /usr/bin/clang++ clang++ "$(ls /usr/bin/clang++-[21*)" 100
+          update-alternatives --install /usr/bin/clang++ clang++ "$(ls /usr/bin/clang++-[21]*)" 100
 
           # Download and install CMake
           mkdir -p /cmake
