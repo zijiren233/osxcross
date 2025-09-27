@@ -75,7 +75,7 @@ jobs:
           # Build Apple Clang
           export INSTALLPREFIX=/usr/local/apple-clang
           export CLANG_VERSION=21
-          UNATTENDED=1 ENABLE_CLANG_INSTALL=1 JOBS=$(nproc) bash build_apple_clang.sh
+          UNATTENDED=1 ENABLE_CLANG_INSTALL=1 PORTABLE=1 JOBS=$(nproc) bash build_apple_clang.sh
 
           # Create distribution package
           mkdir -p dist
@@ -206,16 +206,17 @@ jobs:
             uuid-dev \
             lsb-release \
             software-properties-common \
-            gnupg
+            gnupg \
+            build-essential \
+            ninja-build
 
           export TARGET_DIR=/usr/local/osxcross
-          mkdir -p $TARGET_DIR/clang
+          CLANG_DIR=$TARGET_DIR/clang
+          mkdir -p $CLANG_DIR
 
           # Extract and setup Apple Clang
-          tar -xzf /osxcross/apple-clang/*.tar.gz -C $TARGET_DIR/clang
-          export PATH=$TARGET_DIR/clang/bin:$PATH
-          export CC=$TARGET_DIR/clang/bin/clang
-          export CXX=$TARGET_DIR/clang/bin/clang++
+          tar -xzf /osxcross/apple-clang/*.tar.gz -C $CLANG_DIR
+          export PATH=$CLANG_DIR/bin:$PATH
 
           # Download and install CMake
           mkdir -p /cmake
@@ -231,7 +232,7 @@ jobs:
 
           # Build osxcross
           export IPHONEOS_DEPLOYMENT_TARGET=5.0
-          UNATTENDED=1 SDK_VERSION="$(echo $2 | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
+          UNATTENDED=1 SDK_VERSION="$(echo $2 | sed 's/-/./g')" JOBS=$(nproc) OCDEBUG=1 bash build.sh
 
           # Create distribution package
           mkdir -p dist
