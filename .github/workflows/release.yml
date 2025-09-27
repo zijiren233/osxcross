@@ -105,6 +105,16 @@ jobs:
           name: apple-clang-${{ matrix.ubuntu_version }}-${{ matrix.runs-on == 'ubuntu-24.04-arm' && 'aarch64' || 'x86_64' }}
           path: dist/*
 
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          append_body: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/*
+
   release_sdks:
     name: Release SDKs
     runs-on: ubuntu-latest
@@ -232,7 +242,7 @@ jobs:
 
           # Build osxcross
           export IPHONEOS_DEPLOYMENT_TARGET=5.0
-          UNATTENDED=1 SDK_VERSION="$(echo $2 | sed 's/-/./g')" JOBS=$(nproc) OCDEBUG=1 bash build.sh
+          UNATTENDED=1 SDK_VERSION="$(echo $2 | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
 
           # Create distribution package
           mkdir -p dist
