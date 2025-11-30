@@ -19,11 +19,19 @@ jobs:
           - 22.04
           - 24.04
         runs-on:
-          - ubuntu-latest
+          - ubuntu-24.04
           - ubuntu-24.04-arm
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-apple-clang-${{ matrix.ubuntu_version }}-${{ matrix.runs-on }}-${{ github.sha }}
+          restore-keys: |
+            ccache-apple-clang-${{ matrix.ubuntu_version }}-${{ matrix.runs-on }}-
 
       - name: Create Apple Clang build script
         run: |
@@ -58,7 +66,8 @@ jobs:
             software-properties-common \
             gnupg \
             build-essential \
-            ninja-build
+            ninja-build \
+            ccache
 
           # Download and install CMake
           mkdir -p /cmake
@@ -93,8 +102,10 @@ jobs:
 
       - name: Build Apple Clang
         run: |
+          mkdir -p .ccache
           docker run --rm \
             --volume "${PWD}:/osxcross" \
+            --volume "${PWD}/.ccache:/root/.ccache" \
             --workdir /osxcross \
             ubuntu:${{ matrix.ubuntu_version }} \
             /bin/bash -c "/osxcross/build_apple_clang_script.sh '${{ matrix.ubuntu_version }}'"
@@ -117,7 +128,7 @@ jobs:
 
   release_sdks:
     name: Release SDKs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: package_sdks
     steps:
       - uses: actions/checkout@v4
@@ -163,7 +174,7 @@ jobs:
           - 22.04
           - 24.04
         runs-on:
-          - ubuntu-latest
+          - ubuntu-24.04
           - ubuntu-24.04-arm
     runs-on: ${{ matrix.runs-on }}
     needs:
