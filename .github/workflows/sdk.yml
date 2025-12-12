@@ -131,5 +131,5 @@ jobs:
             const { DefaultArtifactClient } = require('@actions/artifact');
             const artifact = new DefaultArtifactClient();
             const sdks = await artifact.listArtifacts();
-            const sdk_versions = sdks.artifacts.map(sdk => sdk.name).filter(name => !name.startsWith('sdk-'));
+            const sdk_versions = sdks.artifacts.map(sdk => sdk.name).filter(name => !name.startsWith('sdk-') && !name.startsWith('apple-clang-'));
             return sdk_versions;

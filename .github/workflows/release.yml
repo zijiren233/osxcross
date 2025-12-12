@@ -139,7 +139,7 @@ jobs:
             const fs = require('fs');
 
             const allArtifacts = await artifact.listArtifacts();
-            const sdkArtifacts = allArtifacts.artifacts.filter(a => !a.name.startsWith('sdk-'));
+            const sdkArtifacts = allArtifacts.artifacts.filter(a => !a.name.startsWith('sdk-') && !a.name.startsWith('apple-clang-'));
             for (const sdkArtifact of sdkArtifacts) {
               console.log('download', sdkArtifact);
               await artifact.downloadArtifact(sdkArtifact.id, {
