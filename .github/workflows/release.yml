@@ -121,6 +121,11 @@ jobs:
     needs: package_sdks
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Clear tarballs
+        run: |
+          rm -rf tarballs/* || true
+          rm -rf tarballs/.* || true
 
       - name: Download SDKs
         id: download_sdks
