@@ -189,6 +189,7 @@ function build()
   cmake ../*llvm*/llvm \
     -DCMAKE_INSTALL_PREFIX=$INSTALLPREFIX \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_DO_STRIP=ON \
     -DLLVM_ENABLE_ASSERTIONS=OFF \
     -DLLVM_ENABLE_PROJECTS="clang" \
     -DLLVM_TARGETS_TO_BUILD="X86;AArch64;ARM" \
