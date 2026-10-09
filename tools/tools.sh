@@ -2,7 +2,7 @@
 
 export LC_ALL="C"
 
-function set_path_vars()
+function import_osxcross_environment()
 {
   if [ -n "$OSXCROSS_VERSION" ]; then
     export VERSION=$OSXCROSS_VERSION
@@ -19,6 +19,7 @@ function set_path_vars()
     export SDK=$OSXCROSS_SDK
     export LIBLTO_PATH=$OSXCROSS_LIBLTO_PATH
     export LINKER_VERSION=$OSXCROSS_LINKER_VERSION
+    export BUILD_FLAVOR=$OSXCROSS_BUILD_FLAVOR
     # Do not use these
     unset OSXCROSS_VERSION OSXCROSS_OSX_VERSION_MIN
     unset OSXCROSS_TARGET OSXCROSS_BASE_DIR
@@ -27,6 +28,7 @@ function set_path_vars()
     unset OSXCROSS_PATCH_DIR OSXCROSS_TARGET_DIR
     unset OSXCROSS_BUILD_DIR OSXCROSS_CCTOOLS_PATH
     unset OSXCROSS_LIBLTO_PATH OSXCROSS_LINKER_VERSION
+    unset OSXCROSS_BUILD_FLAVOR
   else
     export BASE_DIR=$PWD
     export TARBALL_DIR=$PWD/tarballs
@@ -38,7 +40,7 @@ function set_path_vars()
   fi
 }
 
-set_path_vars
+import_osxcross_environment
 
 PLATFORM=$(uname -s)
 ARCH=$(uname -m)
@@ -59,12 +61,107 @@ if [[ $PLATFORM == Darwin ]]; then
   export LIBRARY_PATH=${LDFLAGS_OPENSSL:2}
 fi
 
+# Check whether an architecture is included in a space-separated list.
+#
+# Usage:
+#   arch_supported "<arch>"
+#     Uses SUPPORTED_ARCHS, falling back to OSXCROSS_SUPPORTED_ARCHS.
+#
+#   arch_supported "<supported archs>" "<arch>"
+#     Uses the explicitly provided list instead of the global variables.
+#
+# GCC calls arm64 "aarch64", so aarch64 is normalized to arm64 in both the
+# list and the architecture being checked. Returns 0 when supported, 1 when
+# unsupported and 2 when called with an invalid number of arguments.
 function arch_supported() {
-  [[ " $SUPPORTED_ARCHS " == *" $1 "* ]]
+  local supported_archs
+  local arch
+
+  case $# in
+    1)
+      arch=$1
+      supported_archs=${SUPPORTED_ARCHS:-$OSXCROSS_SUPPORTED_ARCHS}
+      ;;
+    2)
+      supported_archs=$1
+      arch=$2
+      ;;
+    *)
+      echo "Usage: arch_supported [<supported archs>] <arch to check>" 1>&2
+      return 2
+      ;;
+  esac
+
+  if [ "$arch" = "aarch64" ]; then
+    arch=arm64
+  fi
+
+  supported_archs=${supported_archs//aarch64/arm64}
+
+  [[ " $supported_archs " == *" $arch "* ]]
 }
 
 function first_supported_arch() {
   echo "${SUPPORTED_ARCHS%% *}"
+}
+
+# Compare two dotted versions without external tools; this replaces the old
+# osxcross-cmp wrapper program and prints 1 when the comparison is true, else 0.
+function cmp-version() {
+  (( $# >= 3 )) || return 1
+
+  local lhs=$1 op=$2 rhs=$3
+  local -a parts values av=(0 0 0) bv=(0 0 0)
+  local version part sign digits n i operand
+
+  operand=0
+  for version in "$lhs" "$rhs"; do
+    parts=()
+    values=(0 0 0)
+    IFS='.' read -r -a parts <<< "$version"
+
+    for i in 0 1 2; do
+      part=${parts[i]:-0}
+      n=0
+
+      if [[ $part =~ ^[[:space:]]*([+-]?)([0-9]+) ]]; then
+        sign=${BASH_REMATCH[1]}
+        digits=${BASH_REMATCH[2]}
+
+        while [[ $digits == 0* && $digits != 0 ]]; do
+          digits=${digits#0}
+        done
+
+        n=$((10#$digits))
+        [[ $sign == "-" ]] && n=$((-n))
+      fi
+
+      values[i]=$n
+    done
+
+    if (( operand == 0 )); then
+      av=("${values[@]}")
+    else
+      bv=("${values[@]}")
+    fi
+    ((operand += 1))
+  done
+
+  local a=$((av[0] * 10000 + av[1] * 100 + av[2]))
+  local b=$((bv[0] * 10000 + bv[1] * 100 + bv[2]))
+  local result
+
+  case "$op" in
+    '>')  result=$((a > b)) ;;
+    '<')  result=$((a < b)) ;;
+    '>=') result=$((a >= b)) ;;
+    '<=') result=$((a <= b)) ;;
+    '==') result=$((a == b)) ;;
+    '!=') result=$((a != b)) ;;
+    *) return 1 ;;
+  esac
+
+  printf '%d' "$result"
 }
 
 function require()
@@ -84,6 +181,7 @@ else
 fi
 
 if [ -z "$USESYSTEMCOMPILER" ]; then
+
   if [ -z "$CC" ]; then
     export CC="clang"
   fi
@@ -107,7 +205,6 @@ fi
 
 require $SED
 require $MAKE
-require $CMAKE
 require patch
 require gunzip
 
@@ -135,61 +232,138 @@ if [ $SCRIPT != "build.sh" ]; then
 
   if [ -z "$TOP_BUILD_SCRIPT" ]; then
     eval "$res"
-    set_path_vars
+    import_osxcross_environment
   fi
 fi
 
 
-# find sdk version to use
+# Detects the SDK archive in TARBALL_DIR and derives its macOS version.
+# Fails if no SDK is found or if multiple SDKs are present without an
+# explicit SDK_VERSION. The detected version is stored in and exported as
+# guess_sdk_version_result.
 function guess_sdk_version()
 {
-  tmp1=
-  tmp2=
-  tmp3=
-  file=
-  sdk=
+  local file=
+  local sdk=
+  local sdkcount=0
+  local -a sdks=()
   guess_sdk_version_result=
-  sdkcount=$(find -L tarballs/ -type f | grep MacOSX | wc -l)
+
+  while IFS= read -r -d '' sdk; do
+    file=$(basename "$sdk")
+    if [[ $file =~ ^MacOSX[0-9]+(\.[0-9]+)*u?(\.sdk)?\.tar\.(xz|gz|bz2)$ ]]; then
+      sdks+=("$sdk")
+    fi
+  done < <(find -L "$TARBALL_DIR" -type f -name 'MacOSX*' -print0)
+
+  sdkcount=${#sdks[@]}
   if [ $sdkcount -eq 0 ]; then
-    echo no SDK found in 'tarballs/'. please see README.md
+    echo "Error: No SDK found in '$TARBALL_DIR'. Please see README.md."
     exit 1
   elif [ $sdkcount -gt 1 ]; then
-    sdks=$(find -L tarballs/ -type f | grep MacOSX)
-    for sdk in $sdks; do echo $sdk; done
-    echo 'more than one MacOSX SDK tarball found. please set'
-    echo 'SDK_VERSION environment variable for the one you want'
-    echo '(for example: SDK_VERSION=10.x [OSX_VERSION_MIN=10.x] [TARGET_DIR=...] ./build.sh)'
+    echo "Found the following SDKs:"
+    echo ""
+    for sdk in "${sdks[@]}"; do
+      echo "$sdk"
+    done
+    echo ""
+
+    echo "Please set the SDK_VERSION environment variable for the one you want."
+    echo ""
+    echo "(for example: SDK_VERSION=10.x [OSX_VERSION_MIN=10.x] [TARGET_DIR=...] ./build.sh)"
     exit 1
   else
-    sdk=$(find -L tarballs/ -type f | grep MacOSX)
-    tmp2=$(echo ${sdk/bz2/} | $SED s/[^0-9.]//g)
-    tmp3=$(echo $tmp2 | $SED s/\\\.*$//g)
-    guess_sdk_version_result=$tmp3
-    echo 'found SDK version' $guess_sdk_version_result 'at tarballs/'$(basename $sdk)
-  fi
-  if [ $guess_sdk_version_result ]; then
-    if [ $guess_sdk_version_result = 10.4 ]; then
-      guess_sdk_version_result=10.4u
+    sdk=${sdks[0]}
+    file=$(basename "$sdk")
+    if [[ $file =~ ^MacOSX([0-9]+(\.[0-9]+)*) ]]; then
+      guess_sdk_version_result=${BASH_REMATCH[1]}
     fi
+    #echo "Found SDK version $guess_sdk_version_result at $TARBALL_DIR/$file"
+  fi
+  if [ "$guess_sdk_version_result" = 10.4 ]; then
+    guess_sdk_version_result=10.4u
   fi
   export guess_sdk_version_result
 }
 
-# make sure there is actually a file with the given SDK_VERSION
+# Locates the SDK archive matching SDK_VERSION in TARBALL_DIR and stores its
+# path in $SDK. Accepts either a full version such as 10.15 or a major version
+# such as 27. Terminates the build if no matching SDK archive is found.
 function set_and_verify_sdk_path()
 {
   if [[ $SDK_VERSION == *.* ]]; then
-    SDK=$(ls $TARBALL_DIR/MacOSX$SDK_VERSION* || echo "")
+    SDK=$(ls $TARBALL_DIR/MacOSX$SDK_VERSION* 2>/dev/null || echo "")
   else
-    SDK=$(ls $TARBALL_DIR/MacOSX$SDK_VERSION.* | grep -v "\.[0-9]\+" || echo "")
+    SDK=$(ls $TARBALL_DIR/MacOSX$SDK_VERSION.* 2>/dev/null | grep -v "\.[0-9]\+" || echo "")
   fi
 
   if [ -z "$SDK" ] ; then
-    echo "cant find SDK for MacOSX $SDK_VERSION in tarballs. exiting."
+    echo "Error: Can't find SDK for macOS $SDK_VERSION in '$TARBALL_DIR'." 1>&2
     exit 1
-  else
-    echo "verified at $SDK"
   fi
+}
+
+# Detects an existing OSXCross installation in TARGET_DIR or PATH.
+# Reads its target and build directories, warns about reusing them,
+# and asks for confirmation unless running in unattended mode.
+function check_for_existing_osxcross_installation()
+{
+  EXISTING_OSXCROSS_CONF=""
+
+  if [ -x "$TARGET_DIR/bin/osxcross-conf" ]; then
+    EXISTING_OSXCROSS_CONF="$TARGET_DIR/bin/osxcross-conf"
+  elif EXISTING_OSXCROSS_CONF=$(command -v osxcross-conf 2>/dev/null); then
+    :
+  fi
+
+  if [ -z "$EXISTING_OSXCROSS_CONF" ]; then
+    return 1
+  fi
+
+  IFS=$'\t' read -r \
+    EXISTING_OSXCROSS_TARGET_DIR \
+    EXISTING_OSXCROSS_BUILD_DIR < <(
+    (
+      eval "$("$EXISTING_OSXCROSS_CONF")"
+
+      printf '%s\t%s\n' \
+        "$(realpath "$OSXCROSS_TARGET_DIR")" \
+        "$(realpath "$OSXCROSS_BUILD_DIR")"
+    )
+  )
+
+  echo ""
+  echo "WARNING: Existing OSXCross installation detected"
+  echo "------------------------------------------------"
+  echo "The following directories already contain an"
+  echo "OSXCross installation:"
+  echo ""
+  printf "%-7s: %s\n" "Target" "$EXISTING_OSXCROSS_TARGET_DIR"
+  printf "%-7s: %s\n" "Build" "$EXISTING_OSXCROSS_BUILD_DIR"
+  echo ""
+  echo "Remove these directories before rebuilding."
+  echo "Reusing them may produce an inconsistent or unreliable build."
+  echo ""
+
+  if [ "$UNATTENDED" = "1" ]; then
+    echo "UNATTENDED=1: continuing without confirmation."
+    return 0
+  else
+    read -r -p "Continue without removing them? [y/N] " response
+
+    case "$response" in
+      y|Y|yes|YES) ;;
+      *)
+        echo ""
+        echo "Build cancelled."
+        exit 0
+        ;;
+    esac
+
+    return 0
+  fi
+
+  return 0
 }
 
 
@@ -278,14 +452,18 @@ function create_tmp_dir()
   popd &>/dev/null
 }
 
-# f_res=1 = something has changed upstream
-# f_res=0 = nothing has changed
-
+# Clone or update a source repository and check out the requested branch.
+#
+# Usage:
+#   git_clone_repository "<url>" ["<branch>"] "<project name>"
+#
+# When no branch is supplied, the repository's default branch is used.
+# A shallow clone is used unless FULL_CLONE is set.
 function git_clone_repository
 {
-  local url=$1
-  local branch=$2
-  local project_name=$3
+  local url="$1"
+  local branch="${2:-}"
+  local project_name="$3"
 
   if [ -n "$TP_OSXCROSS_DEV" ] && [ -d "$TP_OSXCROSS_DEV/$project_name" ] ; then
     # copy files from local working directory
@@ -296,7 +474,6 @@ function git_clone_repository
       git clean -fdx &>/dev/null
       popd &>/dev/null
     fi
-    f_res=1
     return
   fi
 
@@ -306,39 +483,38 @@ function git_clone_repository
     git_extra_opts="--depth 1 "
   fi
 
-  if [ ! -d $project_name ]; then
-    git clone $url $project_name $git_extra_opts
+  if [ ! -d "$project_name" ]; then
+    if [ -n "$branch" ]; then
+      git clone $git_extra_opts --branch "$branch" "$url" "$project_name"
+    else
+      git clone $git_extra_opts "$url" "$project_name"
+    fi
   fi
 
-  pushd $project_name &>/dev/null
+  pushd "$project_name" &>/dev/null
 
   git reset --hard &>/dev/null
   git clean -fdx &>/dev/null
 
-  if git show-ref refs/heads/$branch &>/dev/null; then
-    git fetch origin $branch
+  if [ -z "$branch" ]; then
+    branch=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)
+    branch=${branch#origin/}
+  fi
+
+  if [ -z "$branch" ]; then
+    echo "Unable to determine the default branch for $url" 1>&2
+    popd &>/dev/null
+    return 1
+  fi
+
+  if git show-ref "refs/heads/$branch" &>/dev/null; then
+    git fetch origin "$branch"
   else
-    git fetch origin $branch:$branch $git_extra_opts
+    git fetch origin "$branch:$branch" $git_extra_opts
   fi
   
-  git checkout $branch
-  git pull origin $branch
-
-  local new_hash=$(git rev-parse HEAD)
-  local old_hash=""
-  local hash_file="$BUILD_DIR/.${project_name}_git_hash"
-
-  if [ -f $hash_file ]; then
-    old_hash=$(cat $hash_file)
-  fi
-
-  echo -n $new_hash > $hash_file
-
-  if [ "$old_hash" != "$new_hash" ]; then
-    f_res=1
-  else
-    f_res=0
-  fi
+  git checkout "$branch"
+  git pull origin "$branch"
 
   popd &>/dev/null
 }
@@ -350,13 +526,6 @@ function get_project_name_from_url()
   project_name=$(basename $url)
   project_name=${project_name/\.git/}
   echo -n $project_name
-}
-
-function build_success()
-{
-  local project_name=$1
-  touch "$BUILD_DIR/.${CURRENT_BUILD_PROJECT_NAME}_build_complete"
-  unset CURRENT_BUILD_PROJECT_NAME
 }
 
 function build_msg()
@@ -372,24 +541,32 @@ function build_msg()
   echo "" 
 }
 
+# Get the sources for a build project.
+#
+# Usage:
+#   get_sources "<url>" ["<branch>"] ["<project name>"]
+#
+# The project name defaults to the repository name. When no branch is
+# supplied, the repository's default branch is used.
+#
 # f_res=1 = build the project
-# f_res=0 = nothing to do
-
+# f_res=0 = skip the project
 function get_sources()
 {
   local url="$1"
-  local branch="$2"
-  local project_name="$3"
-  local build_complete_file
+  local branch="${2:-}"
+  local project_name="${3:-}"
 
   if [[ -z "${project_name}" ]]; then
     project_name=$(get_project_name_from_url "${url}")
   fi
-  build_complete_file="${BUILD_DIR}/.${project_name}_build_complete"
-
   CURRENT_BUILD_PROJECT_NAME="${project_name}"
 
-  build_msg "${project_name}" "${branch}"
+  if [ -n "${branch}" ]; then
+    build_msg "${project_name}" "${branch}"
+  else
+    build_msg "${project_name}"
+  fi
 
   if [[ "${SKIP_BUILD}" == *${project_name}* ]]; then
     f_res=0
@@ -397,23 +574,7 @@ function get_sources()
   fi
 
   git_clone_repository "${url}" "${branch}" "${project_name}"
-
-  if [[ $f_res -eq 1 ]]; then
-    rm -f "${build_complete_file}"
-    f_res=1
-  else
-    # nothing has changed upstream
-
-    if [[ -f "${build_complete_file}" ]]; then
-      echo ""
-      echo "## Nothing to do ##"
-      echo ""
-      f_res=0
-    else
-      rm -f "${build_complete_file}"
-      f_res=1
-    fi
-  fi
+  f_res=1
 }
 
 function download()
@@ -423,7 +584,7 @@ function download()
 
   if command -v curl &>/dev/null; then
     ## cURL ##
-    local curl_opts="-L -C - "
+    local curl_opts="-fL -C - "
     curl $curl_opts -o $filename $uri
   elif command -v wget &>/dev/null; then
     ## wget ##
@@ -446,6 +607,52 @@ function create_symlink()
     exit 1
   fi
   ln -sf "$1" "$2"
+}
+
+function install_cmake_toolchain_files()
+{
+  local compiler=$1
+  local arch
+  local variants_cmake_suffix
+  local cmake_suffix
+
+  if [ -z "$compiler" ]; then
+    echo "Usage: install_cmake_toolchain_files <compiler> [arch ...]" 1>&2
+    return 1
+  fi
+
+  shift
+
+  case "$compiler" in
+    clang)
+      variants_cmake_suffix=("" "-clang" "-clang-libc++" "-clang-gstdc++")
+      ;;
+    gcc)
+      variants_cmake_suffix=("-gcc" "-gcc-libc++")
+      ;;
+    *)
+      echo "Unsupported CMake compiler: '$compiler'" 1>&2
+      return 1
+      ;;
+  esac
+
+  cp -f "$BASE_DIR/tools/toolchain.cmake" "$TARGET_DIR/"
+  cp -f "$BASE_DIR/tools/osxcross-cmake" "$TARGET_DIR/bin/"
+  chmod 755 "$TARGET_DIR/bin/osxcross-cmake"
+
+  for arch in "$@"; do
+    for cmake_suffix in "${variants_cmake_suffix[@]}"; do
+      create_symlink osxcross-cmake \
+                     "$TARGET_DIR/bin/$arch-apple-$TARGET-cmake$cmake_suffix"
+
+      # GCC also exposes an aarch64 -> arm64 alias because GCC itself
+      # is built using the aarch64-apple-darwin-* triple.
+      if [ "$compiler" = "gcc" ] && [ "$arch" = "aarch64" ]; then
+        create_symlink osxcross-cmake \
+                       "$TARGET_DIR/bin/arm64-apple-$TARGET-cmake$cmake_suffix"
+      fi
+    done
+  done
 }
 
 function verbose_cmd()
@@ -506,8 +713,8 @@ function test_compiler_cxx11()
 function test_compiler_cxx2b()
 {
   set +e
-  echo -ne "testing $1 -std=c++20 -mmacos-version-min=10.15 ... "
-  $1 $2 -O2 -std=c++20 -mmacos-version-min=10.15 -Wall -o test &>/dev/null
+  echo -ne "testing $1 -std=c++20 -mmacos-version-min=$SDK_VERSION ... "
+  $1 $2 -O2 -std=c++20 -mmacos-version-min=$SDK_VERSION -Wall -o test &>/dev/null
   if [ $? -eq 0 ]; then
     rm test
     echo "works"
@@ -532,7 +739,6 @@ function build_xar()
     $MAKE -j$JOBS
     $MAKE install -j$JOBS
     popd &>/dev/null
-    build_success
   fi
 
   popd &>/dev/null
@@ -557,7 +763,6 @@ function build_p7zip()
     find $TARGET_DIR_SDK_TOOLS/share -type f -exec chmod 0664 {} \;
     find $TARGET_DIR_SDK_TOOLS/share -type d -exec chmod 0775 {} \;
     popd &>/dev/null
-    build_success
   fi
 }
 
@@ -572,7 +777,6 @@ function build_pbxz()
                 -I $TARGET_DIR/include -L $TARGET_DIR/lib pbzx.c \
                 -o $TARGET_DIR_SDK_TOOLS/bin/pbzx -llzma -lxar \
                 -Wl,-rpath,$TARGET_DIR/lib
-    build_success
     popd &>/dev/null
   fi
 }

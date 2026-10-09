@@ -30,9 +30,10 @@ namespace osxcross {
 
 int env(int argc, char **argv) {
   char epath[PATH_MAX + 1];
-  char *oldpath = getenv("PATH");
+  const char *oldpath = getenv("PATH");
 
-  assert(oldpath);
+  if (!oldpath)
+    abort();
 
   if (!getExecutablePath(epath, sizeof(epath)))
     exit(EXIT_FAILURE);
@@ -82,7 +83,7 @@ int env(int argc, char **argv) {
       return 1;
 
     const char *var = argv[1] + 3;
-    return static_cast<int>(printVariable(var));
+    return printVariable(var) ? 0 : 1;
   }
 
   return 0;

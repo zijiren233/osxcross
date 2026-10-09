@@ -31,7 +31,7 @@ template<typename A>
 
 void print(const char *var, const A &val) {
   std::cout << "export OSXCROSS_" << var << "=" << "\"" << val << "\"" << std::endl;
-};
+}
 
 int conf(Target &target) {
   std::string SDKPath;
@@ -54,6 +54,7 @@ int conf(Target &target) {
     ltopath = "";
 
   print("VERSION", getOSXCrossVersion());
+  print("BUILD_FLAVOR", getBuildFlavor());
   print("OSX_VERSION_MIN", OSXVersionMin.shortStr());
   print("TARGET", getDefaultTarget());
   print("BASE_DIR", BuildDir + "/..");
@@ -69,6 +70,7 @@ int conf(Target &target) {
   print("LIBLTO_PATH", ltopath);
   print("LINKER_VERSION", getLinkerVersion());
   print("SUPPORTED_ARCHS", getSupportedArchsString());
+  print("GCC_TARGET_ARCHS", getSupportedArchsString(true));
   print("DEFAULT_ARCH", getArchName(getDefaultArch()));
 
   return 0;

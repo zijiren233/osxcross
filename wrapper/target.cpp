@@ -74,10 +74,18 @@ OSVersion Target::getSDKOSNum() const {
 
     double n = atof(target.c_str() + 6);
 
-    if (n >= 25.0f) {
-      // MacOS 26.0 or later
+    if (n >= 27.0f) {
+      // Darwin 27 and later correspond directly to macOS 27 and later.
 
-      int major = 21 + ((int)n % 20);
+      int major = (int)n;
+      int minor = (int)(((n - (int)n) * 10.0) + 0.1);
+
+      return OSVersion(major, minor);
+    } else if (n >= 25.0f) {
+      // Darwin 25 corresponds to macOS 26.
+      // Darwin 26 was skipped.
+
+      int major = (int)n + 1;
       int minor = (int)(((n - (int)n) * 10.0) + 0.1);
 
       return OSVersion(major, minor);
@@ -162,7 +170,7 @@ void Target::overrideDefaultSDKPath(const char *SDKSearchDir) {
     SDKPath += PATHDIV;
     SDKPath += latestSDK;
 
-    SDK = strdup(SDKPath.c_str()); // intentionally leaked
+    SDK = safeStrdup(SDKPath.c_str()); // intentionally leaked
   }
 }
 
@@ -328,8 +336,14 @@ bool Target::isKnownCompiler() const {
 }
 
 
-const std::string &Target::getDefaultTriple(std::string &triple) const {
-  triple = getArchName(Arch::x86_64);
+const std::string &Target::buildDefaultTriple(std::string &triple,
+  bool GCC, bool useAarch64InsteadOfArm64) const {
+  Arch defaultArch = getDefaultArch(GCC);
+
+  if (defaultArch == Arch::arm64 && useAarch64InsteadOfArm64)
+    defaultArch = Arch::aarch64;
+
+  triple = getArchName(defaultArch);
   triple += "-";
   triple += getDefaultVendor();
   triple += "-";
@@ -353,8 +367,9 @@ void Target::setCompilerPath() {
     if (!compilerpath.empty()) {
       compilerpath += "/";
       compilerpath += compilername;
+      compilerexecname = compilername;
     } else {
-      if (!realPath(compilername.c_str(), compilerpath, ignoreCCACHE))
+      if (!findExecutableInPath(compilername.c_str(), compilerpath, ignoreCCACHE))
         compilerpath = compilername;
 
       compilerexecname += compilername;
@@ -487,17 +502,22 @@ void Target::setupGCCLibs(Arch arch) {
   fargs.push_back("-nodefaultlibs");
 
   std::string SDKPath;
+  std::stringstream GCCTriple;
   std::stringstream GCCLibSTDCXXPath;
   std::stringstream GCCLibPath;
 
   const bool dynamic = !!getenv("OSXCROSS_GCC_NO_STATIC_RUNTIME");
+  // The i386 runtime is a multilib of the x86_64 GCC installation.
+  const char *GCCArch = arch == Arch::arm64 ? "aarch64" : "x86_64";
 
   getSDKPath(SDKPath);
 
-  GCCLibPath << SDKPath << "/../../lib/gcc/" << otriple << "/"
+  GCCTriple << GCCArch << "-" << vendor << "-" << target;
+
+  GCCLibPath << SDKPath << "/../../lib/gcc/" << GCCTriple.str() << "/"
              << gccversion.Str();
 
-  GCCLibSTDCXXPath << SDKPath << "/../../" << otriple << "/lib";
+  GCCLibSTDCXXPath << SDKPath << "/../../" << GCCTriple.str() << "/lib";
 
   switch (arch) {
   case Arch::i386:
@@ -505,7 +525,8 @@ void Target::setupGCCLibs(Arch arch) {
   case Arch::i586:
   case Arch::i686:
     GCCLibPath << "/" << getArchName(Arch::i386);
-    GCCLibSTDCXXPath << "/" << getArchName(i386);
+    GCCLibSTDCXXPath << "/" << getArchName(Arch::i386);
+    break;
   default:
     ;
   }
@@ -537,7 +558,21 @@ void Target::setupGCCLibs(Arch arch) {
   addLib(GCCLibPath, "gcc_eh");
 
   fargs.push_back("-lc");
-  fargs.push_back("-Wl,-no_compact_unwind");
+
+  // ld64.lld does not implement -no_compact_unwind.
+  if (!buildFlavor.IsLLVM())
+    fargs.push_back("-Wl,-no_compact_unwind");
+}
+
+void Target::setTriple(bool useAarch64InsteadOfArm64) {
+  Arch tripleArch = useAarch64InsteadOfArm64 && 
+    (arch == Arch::arm64) ? Arch::aarch64 : arch;
+
+  triple = getArchName(tripleArch);
+  triple += "-";
+  triple += vendor;
+  triple += "-";
+  triple += target;
 }
 
 bool Target::setup() {
@@ -557,18 +592,7 @@ bool Target::setup() {
   if (!getSDKPath(SDKPath))
     return false;
 
-  triple = getArchName(arch);
-  triple += "-";
-  triple += vendor;
-  triple += "-";
-  triple += target;
-
-  otriple = getArchName(Arch::x86_64);
-  otriple += "-";
-  otriple += vendor;
-  otriple += "-";
-  otriple += target;
-
+  setTriple();
   setCompilerPath();
 
   constexpr struct {
@@ -697,7 +721,40 @@ bool Target::setup() {
       // Use libs from './build_gcc.sh' installation
 
       CXXHeaderPath += "/../../";
-      CXXHeaderPath += otriple;
+
+      // Build the target triple name we BUILD for - not what triple has been invoked.
+      // i.e. x86_64-apple-darwin27-clang++-gstdc++ -arch arm64
+      //      -> results in aarch64-apple-darwin27
+
+      std::string CXXBuildTriple;
+
+      if (targetarchs.size() > 1) { // TODO: should probably check earlier for this
+        err << "clang++-gstdc++ does not support multiple architectures in "
+              "one invocation"
+            << err.endl();
+        return false;
+      }
+
+      switch (targetarchs[0]) {
+      case Arch::arm64:
+        CXXBuildTriple += getArchName(Arch::aarch64);
+        break;
+      case Arch::i386:
+      case Arch::x86_64:
+        // i386 is a multilib of the x86_64 GCC installation;
+        CXXBuildTriple += getArchName(Arch::x86_64);
+        break;
+      default:
+        err << "clang++-gstdc++ does not support architecture '"
+            << getArchName(targetarchs[0]) << "'" << err.endl();
+        return false;
+      }
+      CXXBuildTriple += "-";
+      CXXBuildTriple += vendor;
+      CXXBuildTriple += "-";
+      CXXBuildTriple += target;
+
+      CXXHeaderPath += CXXBuildTriple;
       CXXHeaderPath += "/include/c++";
 
       static std::vector<GCCVersion> v;
@@ -721,7 +778,7 @@ bool Target::setup() {
       CXXHeaderPath += "/";
       CXXHeaderPath += gccversion.Str();
 
-      addCXXPath(otriple);
+      addCXXPath(CXXBuildTriple);
     } else {
       // Use SDK libs
       std::string tmp;
@@ -761,11 +818,15 @@ bool Target::setup() {
     fargs.push_back("-target");
     fargs.push_back(getTriple());
 
-    tmp = "-mlinker-version=";
-    tmp += getLinkerVersion();
+    const char *linkerVersion = getLinkerVersion();
 
-    fargs.push_back(tmp);
-    tmp.clear();
+    // -mlinker-version= is only relevant for ld64.
+    if (!buildFlavor.IsLLVM() && linkerVersion && linkerVersion[0]) {
+      tmp = "-mlinker-version=";
+      tmp += linkerVersion;
+      fargs.push_back(tmp);
+      tmp.clear();
+    }
 
 #ifndef __APPLE__
     if (!findClangIntrinsicHeaders(ClangIntrinsicPath)) {
@@ -821,7 +882,7 @@ bool Target::setup() {
       fargs.push_back("-static-libstdc++");
     }
 
-    if (!isGCH())
+    if (!buildFlavor.IsLLVM() && !isGCH())
       fargs.push_back("-Wl,-no_compact_unwind");
   }
 
@@ -873,8 +934,8 @@ bool Target::setup() {
     if (isClang() && clangversion < ClangVersion(11, 0) &&
         OSNum >= OSVersion(11, 0)) {
       // Clang <= 10 can't parse -mmacosx-version-min=11.x
-      warn << "Your clang installation is outdated and can't parse '-mmacosx-version-min=" << OSNum.shortStr() << "'. "
-           << "Setting it to 10.16."  << warn.endl();
+      warn << "your clang installation is outdated and can't parse '-mmacosx-version-min=" << OSNum.shortStr() << "'. "
+           << "setting it to 10.16."  << warn.endl();
       tmp += "10.16";
     } else {
       tmp += OSNum.Str();
@@ -894,15 +955,13 @@ bool Target::setup() {
       is32bit = true;
       // falls through
     case Arch::arm64:
-      isArm = true;
-      // falls through
     case Arch::arm64e:
-      isArm = true;
-      // falls through
     case Arch::x86_64:
     case Arch::x86_64h:
+      isArm = arch == Arch::arm64 || arch == Arch::arm64e;
       if (isGCC()) {
-        if (arch != Arch::x86_64 && arch != Arch::i386) {
+        if (arch != Arch::x86_64 && arch != Arch::i386 &&
+            arch != Arch::arm64) {
           err << "gcc does not support architecture '" << getArchName(arch)
               << "'" << err.endl();
           return false;
@@ -935,6 +994,13 @@ bool Target::setup() {
 #endif
 
   if (isClang()) {
+    if (buildFlavor.IsLLVM() &&
+        std::find(args.begin(), args.end(), "-c") == args.end() &&
+        std::find(args.begin(), args.end(), "-E") == args.end() &&
+        std::find(args.begin(), args.end(), "-S") == args.end()) {
+      fargs.push_back("-fuse-ld=lld");
+    }
+
     if (getenv("OSXCROSS_PRETEND_TO_BE_APPLE_CLANG")) {
       fargs.push_back("-D__apple_build_version__=1");
     }
@@ -997,9 +1063,13 @@ bool Target::setup() {
       return false;
   }
 
-  // Silence 'operator new[]' warning in ld64
-  if (isgcclibstdcxx)
+  if (buildFlavor.IsLLVM() && isGCC()) {
+    // The LLVM as wrapper needs GCC's selected deployment target.
+    setenv("OSXCROSS_AS_TARGET_VERSION", OSNum.shortStr().c_str(), 1);
+  } else if (isgcclibstdcxx) {
+    // Silence 'operator new[]' warning in ld64.
     setenv("OSXCROSS_GCC_LIBSTDCXX", "1", 1);
+  }
 
   return true;
 }

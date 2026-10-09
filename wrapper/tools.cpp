@@ -83,6 +83,9 @@ bool isTerminal() {
 //
 
 char *getExecutablePath(char *buf, size_t len) {
+  if (!buf || !len)
+    return nullptr;
+
   char *p;
 #ifdef __APPLE__
   unsigned int l = len;
@@ -114,11 +117,12 @@ char *getExecutablePath(char *buf, size_t len) {
     }
   } else {
     char *sp;
-    char *xpath = strdup(getenv("PATH"));
-    char *path = strtok_r(xpath, ":", &sp);
-    struct stat st;
-    if (!xpath)
+    const char *envpath = getenv("PATH");
+    if (!envpath)
       abort();
+    char *xpath = safeStrdup(envpath);
+    struct stat st;
+    char *path = strtok_r(xpath, ":", &sp);
     while (path) {
       snprintf(buf, len, "%s/%s", path, comm);
       if (!stat(buf, &st) && (st.st_mode & S_IXUSR)) {
@@ -182,8 +186,9 @@ const std::string &getParentProcessName() {
     clear(file);
     file << "/proc/" << ppid << "/exe";
     char buf[PATH_MAX + 1];
-    if (readlink(file.str().c_str(), buf, sizeof(buf)) > 0) {
-      buf[PATH_MAX] = '\0';
+    ssize_t len = readlink(file.str().c_str(), buf, sizeof(buf) - 1);
+    if (len > 0) {
+      buf[len] = '\0';
       name = getName(buf);
       return name;
     }
@@ -227,10 +232,9 @@ std::string &escapePath(const std::string &path, std::string &escapedpath) {
 
 void splitPath(const char *path, std::vector<std::string> &result) {
   char *sp;
-  char *xpath = strdup(path);
+  char *xpath = safeStrdup(path);
   char *p = strtok_r(xpath, ":", &sp);
-  if (!xpath)
-    abort();
+
   while (p) {
     result.push_back(p);
     p = strtok_r(NULL, ":", &sp);
@@ -272,7 +276,7 @@ std::string *getFileContent(const std::string &file, std::string &content) {
   f.seekg(0, std::ios::beg);
 
   if (len != static_cast<decltype(len)>(-1))
-    content.reserve(static_cast<size_t>(f.tellg()));
+    content.reserve(static_cast<size_t>(len));
 
   content.assign(std::istreambuf_iterator<char>(f),
                  std::istreambuf_iterator<char>());
@@ -332,8 +336,6 @@ bool listFiles(const char *dir, std::vector<std::string> *files,
   return true;
 }
 
-typedef bool (*realpathcmp)(const char *file, const struct stat &st);
-
 bool isExecutable(const char *f, const struct stat &) {
   return !access(f, F_OK | X_OK);
 }
@@ -343,81 +345,65 @@ bool ignoreCCACHE(const char *f, const struct stat &) {
   return name && strstr(name, "ccache") != name;
 }
 
-bool realPath(const char *file, std::string &result,
-              realpathcmp cmp1, realpathcmp cmp2,
-              const size_t maxSymbolicLinkDepth) {
-  char *PATH = getenv("PATH");
-  const char *p = PATH ? PATH : "";
+bool findExecutableInPath(const char *file, std::string &result,
+                          findexecfilter cmp1, findexecfilter cmp2,
+                          bool lookupSymlinks) {
+  const char *path = getenv("PATH");
+  const char *p = path ? path : "";
   struct stat st;
 
   result.clear();
 
-  do {
-    if (*p == ':')
-      ++p;
+  for (;;) {
+    const char *begin = p;
 
     while (*p && *p != ':')
-      result += *p++;
+      ++p;
 
-    result += "/";
+    if (p == begin) {
+      // Skip empty PATH segments (e.g. "::") to avoid searching CWD.
+      if (!*p)
+        break;
+      ++p;
+      continue;
+    }
+
+    result.assign(begin, p - begin);
+    result += PATHDIV;
     result += file;
 
     if (!stat(result.c_str(), &st)) {
-      if (maxSymbolicLinkDepth == 0)
-        return true;
+      if (lookupSymlinks) {
+        char *resolved = realpath(result.c_str(), nullptr);
 
-      char buf[PATH_MAX + 1];
-
-      if (realpath(result.c_str(), buf)) {
-        result.assign(buf);
-      } else {
-        ssize_t len;
-        char path[PATH_MAX];
-        size_t pathlen;
-        size_t n = 0;
-
-        pathlen = result.find_last_of(PATHDIV);
-
-        if (pathlen == std::string::npos)
-          pathlen = result.length();
-        else
-          ++pathlen; // PATHDIV
-
-
-        memcpy(path, result.c_str(), pathlen); // not null terminated
-
-        while ((len = readlink(result.c_str(), buf, PATH_MAX)) != -1) {
-          if (buf[0] != PATHDIV) {
-            result.assign(path, pathlen);
-            result.append(buf, len);
-          } else {
-            result.assign(buf, len);
-            pathlen = strrchr(buf, PATHDIV) - buf + 1; // + 1: PATHDIV
-            memcpy(path, buf, pathlen);
-          }
-          if (++n >= maxSymbolicLinkDepth) {
-            err << result << ": too many levels of symbolic links"
-                << err.endl();
-            result.clear();
-            break;
-          }
+        if (!resolved) {
+          result.clear();
+        } else {
+          result.assign(resolved);
+          free(resolved);
         }
       }
 
-      if ((!cmp1 || cmp1(result.c_str(), st)) &&
+      if (!result.empty() &&
+          (!cmp1 || cmp1(result.c_str(), st)) &&
           (!cmp2 || cmp2(result.c_str(), st)))
-        break;
+        return true;
     }
 
     result.clear();
-  } while (*p);
 
-  return !result.empty();
+    if (!*p)
+      break;
+
+    ++p;
+  }
+
+  return false;
 }
 
-bool getPathOfCommand(const char *command, std::string &result,
-                              realpathcmp cmp) {
-  if (realPath(command, result, isExecutable, cmp))
+bool findCommandDirectory(const char *command, std::string &result,
+                               findexecfilter cmp) {
+  if (findExecutableInPath(command, result, isExecutable, cmp))
     stripFileName(result);
 
   return !result.empty();
@@ -447,36 +433,6 @@ const char *getFileExtension(const char *file) {
     p = "";
 
   return p;
-}
-
-//
-// Shell Commands
-//
-
-size_t runcommand(const char *command, char *buf, size_t len) {
-#define RETURN(v)                                                              \
-  do {                                                                         \
-    if (p)                                                                     \
-      pclose(p);                                                               \
-    return (v);                                                                \
-  } while (0)
-
-  if (!len)
-    return RUNCOMMAND_ERROR;
-
-  FILE *p;
-  size_t outputlen;
-
-  if (!(p = popen(command, "r")))
-    RETURN(RUNCOMMAND_ERROR);
-
-  if (!(outputlen = fread(buf, sizeof(char), len - 1, p)))
-    RETURN(RUNCOMMAND_ERROR);
-
-  buf[outputlen] = '\0';
-
-  RETURN(outputlen);
-#undef RETURN
 }
 
 //

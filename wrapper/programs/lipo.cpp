@@ -1,6 +1,6 @@
 /***********************************************************************
  *  OSXCross Compiler Wrapper                                          *
- *  Copyright (C) 2014-2016 by Thomas Poechtrager                      *
+ *  Copyright (C) 2014-2025 by Thomas Poechtrager                      *
  *  t.poechtrager@gmail.com                                            *
  *                                                                     *
  *  This program is free software; you can redistribute it and/or      *
@@ -21,39 +21,33 @@
 
 #include "proginc.h"
 
-using namespace tools;
-
 namespace program {
-namespace osxcross {
+namespace llvm {
 
-int cmp(int argc, char **argv) {
-  if (argc < 4)
+using tools::err;
+
+int lipo(int argc, char **argv, target::Target &target) {
+  if (!target.buildFlavor.IsLLVM()) {
+    err << "lipo: This wrapper is only intended to be used "
+        << "with the OSXCross build flavor LLVM."
+        << err.endl();
     return 1;
+  }
 
-  OSVersion a = parseOSVersion(argv[1]);
-  OSVersion b = parseOSVersion(argv[3]);
+  (void)argc;
 
-  const char *op = argv[2];
-  bool res;
+  std::string executable;
 
-  if (!strcmp(op, ">"))
-    res = a > b;
-  else if (!strcmp(op, "<"))
-    res = a < b;
-  else if (!strcmp(op, ">="))
-    res = a >= b;
-  else if (!strcmp(op, "<="))
-    res = a <= b;
-  else if (!strcmp(op, "=="))
-    res = a == b;
-  else if (!strcmp(op, "!="))
-    res = a != b;
-  else
-    return 1;
+  if (getenv("OSXCROSS_FORCE_LLVM_LIPO") ||
+      !target::findExecutableInPath("osxcross-cctools-lipo", executable))
+    executable = "llvm-lipo";
 
-  std::cout << (res ? "1" : "0");
-  return 0;
+  argv[0] = const_cast<char *>(executable.c_str());
+
+  execvp(executable.c_str(), argv);
+  err << "cannot execute '" << executable << "'" << err.endl();
+  return 1;
 }
 
-} // namespace osxcross
+} // namespace llvm
 } // namespace program

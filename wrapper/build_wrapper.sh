@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
 
+# Build the osxcross wrapper and install the names handled by this script.
+#
+# Execution order:
+#   1. Load the shared build environment.
+#   2. Configure and compile the wrapper binary.
+#   3. Stop after compilation when BWCOMPILEONLY is set.
+#   4. Install the binary and create the required symlinks.
+#
+# Link order is significant because verbose_cmd exposes every operation and a
+# failed command may stop a build immediately. clang++-gstdc++ uses
+# SUPPORTED_ARCHS and supports the ARM64 aliases aarch64, arm64 and oa64 in
+# addition to the classic x86 aliases.
+
 pushd "${0%/*}" &>/dev/null
 pushd .. &>/dev/null
 source ./tools/tools.sh
@@ -9,83 +22,26 @@ if [ -z "$SUPPORTED_ARCHS" ]; then
   export SUPPORTED_ARCHS=$OSXCROSS_SUPPORTED_ARCHS
 fi
 
+if [ -z "$GCC_TARGET_ARCHS" ]; then
+  export GCC_TARGET_ARCHS=$OSXCROSS_GCC_TARGET_ARCHS
+fi
+
 if [ -z "$SUPPORTED_ARCHS" ]; then
   echo "SUPPORTED_ARCHS not set. Rebuild from scratch." 1>&2
   exit 1
 fi
 
-function create_wrapper_link
-{
-  # arg 1:
-  #  program name
-  # arg 2:
-  #  1: create a standalone link and links with the target triple prefix
-  #  2: create links with target triple prefix and shortcut links such
-  #     as o32, o64, ...
-  #
-  # example:
-  #  create_wrapper_link osxcross 1
-  # creates the following symlinks:
-  #  -> osxcross
-  #  -> i386-apple-darwinXX-osxcross
-  #  -> x86_64-apple-darwinXX-osxcross
-  #  -> x86_64h-apple-darwinXX-osxcross
-
-  if [ $# -ge 2 ] && [ $2 -eq 1 ]; then
-    verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "${1}"
-  fi
-
-  if arch_supported i386; then
-    verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "i386-apple-${TARGET}-${1}"
-  fi
-
-  verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "x86_64-apple-${TARGET}-${1}"
-
-  if ([[ $1 != gcc* ]] && [[ $1 != g++* ]] && [[ $1 != *gstdc++ ]]); then
-    if arch_supported x86_64h; then
-      verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "x86_64h-apple-${TARGET}-${1}"
-    fi
-
-    if arch_supported arm64; then
-      verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "aarch64-apple-${TARGET}-${1}"
-      verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "arm64-apple-${TARGET}-${1}"
-      verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "arm64e-apple-${TARGET}-${1}"
-    fi
-  fi
-
-  if [ $# -ge 2 ] && [ $2 -eq 2 ]; then
-    if arch_supported i386; then
-      verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "o32-${1}"
-    fi
-
-    if arch_supported x86_64; then
-      verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "o64-${1}"
-    fi
-
-    if arch_supported x86_64h &&
-      [[ $1 != gcc* ]] && [[ $1 != g++* ]] && [[ $1 != *gstdc++ ]]; then
-      verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "o64h-${1}"
-    fi
-
-    if arch_supported arm64; then
-      verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "oa64-${1}"
-      verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "oa64e-${1}"
-    fi
-  fi
-}
-
 [ -z "$TARGETCOMPILER" ] && TARGETCOMPILER=clang
-
 TARGETTRIPLE=$(first_supported_arch)-apple-${TARGET}
-
 FLAGS=""
 
+# A cross-platform wrapper build compiles only by default and selects the
+# compiler expected by the requested host platform.
 if [ -n "$BWPLATFORM" ]; then
   PLATFORM=$BWPLATFORM
 
   if [ $PLATFORM = "Darwin" -a $(uname -s) != "Darwin" ]; then
     CXX=$(xcrun -f clang++)
-    #CXX=$(xcrun -f g++)
     FLAGS+="-fvisibility-inlines-hidden "
   elif [ $PLATFORM = "FreeBSD" -a $(uname -s) != "FreeBSD" ]; then
     CXX=amd64-pc-freebsd13.0-clang++
@@ -107,19 +63,15 @@ if [ "$PLATFORM" == "Linux" ]; then
   FLAGS+="-isystem quirks/include "
 fi
 
-function compile_wrapper()
-{
-  mkdir -p ${TARGET_DIR}/bin
-  export PLATFORM
-  export CXX
+# Create the installation directory, clean the previous wrapper build and
+# compile with the configured flags.
+mkdir -p ${TARGET_DIR}/bin
+export PLATFORM
+export CXX
 
-  verbose_cmd $MAKE clean
-
-  ADDITIONAL_CXXFLAGS="$FLAGS" \
-    verbose_cmd $MAKE wrapper -j$JOBS
-}
-
-compile_wrapper
+verbose_cmd $MAKE clean
+ADDITIONAL_CXXFLAGS="$FLAGS" \
+  verbose_cmd $MAKE wrapper -j$JOBS
 
 if [ -n "$BWCOMPILEONLY" ]; then
   exit 0
@@ -127,47 +79,211 @@ fi
 
 verbose_cmd mv wrapper "${TARGET_DIR}/bin/${TARGETTRIPLE}-wrapper"
 
+# ---------------------------------------------------------------------------
+# Symlink generation
+# ---------------------------------------------------------------------------
+
+# Install all wrapper links for one program.
+#
+# Usage:
+#   install_program_links <program> <supported-archs> \
+#     [enable_standalone] [enable_shortcuts]
+#
+# One target-prefixed link is created for every whitespace-separated
+# architecture in supported-archs. ARM64 accepts both arm64 and aarch64 and
+# creates both spellings. enable_standalone adds an unprefixed link first;
+# enable_shortcuts adds o32/o64/o64h/oa64/oa64e links and rejects
+# architectures for which no shortcut name is defined.
+#
+# Example: create Clang target links and architecture shortcuts:
+#   install_program_links clang "$SUPPORTED_ARCHS" enable_shortcuts
+#
+# Example: create osxcross first, followed by its target-prefixed links:
+#   install_program_links osxcross "$SUPPORTED_ARCHS" enable_standalone
+#
+# Example: GCC uses its own architecture list:
+#   install_program_links gcc "$GCC_TARGET_ARCHS" enable_shortcuts
+function install_program_links
+{
+  local program=$1
+  local supported_archs=$2
+  local standalone_enabled=""
+  local shortcuts_enabled=""
+  local option arch shortcut
+  shift 2
+
+  # Parse the optional link modes.
+  for option in "$@"; do
+    case "$option" in
+      enable_standalone) standalone_enabled=enabled ;;
+      enable_shortcuts) shortcuts_enabled=enabled ;;
+      *)
+        echo "Unknown install_program_links option: $option" 1>&2
+        return 2
+        ;;
+    esac
+  done
+
+  # Create the unprefixed link before all architecture-specific links.
+  if [ "$standalone_enabled" = enabled ]; then
+    verbose_cmd create_symlink "${TARGETTRIPLE}-wrapper" "$program"
+  fi
+
+  # Create target-prefixed links directly from the supported architectures.
+  for arch in $supported_archs; do
+    case "$arch" in
+      arm64 | aarch64)
+        # Clang uses arm64 while GCC uses aarch64 for the same architecture.
+        # Install both target spellings so either compiler convention works.
+        verbose_cmd create_symlink \
+          "${TARGETTRIPLE}-wrapper" "aarch64-apple-${TARGET}-$program"
+        verbose_cmd create_symlink \
+          "${TARGETTRIPLE}-wrapper" "arm64-apple-${TARGET}-$program"
+        ;;
+      *)
+        verbose_cmd create_symlink \
+          "${TARGETTRIPLE}-wrapper" "$arch-apple-${TARGET}-$program"
+        ;;
+    esac
+  done
+
+  # Create shortcuts only when explicitly requested.
+  if [ "$shortcuts_enabled" != enabled ]; then
+    return 0
+  fi
+
+  # Create the short architecture aliases used by compiler wrappers.
+  for arch in $supported_archs; do
+    case "$arch" in
+      i386) shortcut=o32 ;;
+      x86_64) shortcut=o64 ;;
+      x86_64h) shortcut=o64h ;;
+      arm64 | aarch64) shortcut=oa64 ;;
+      arm64e) shortcut=oa64e ;;
+      *)
+        echo "Unsupported architecture for shortcut link: '$arch'" 1>&2
+        return 2
+        ;;
+    esac
+
+    verbose_cmd create_symlink \
+      "${TARGETTRIPLE}-wrapper" "$shortcut-$program"
+  done
+}
+
+function install_dsymutil_links()
+{
+  # LLVM <= 6 had llvm-dsymutil instead of dsymutil.
+  # If neither is found, echo dsymutil. So the echo below is not showing an empty string.
+  dsymutil=$(which dsymutil 2>/dev/null || which llvm-dsymutil 2>/dev/null || echo dsymutil)
+
+  # Determine the dsymutil version.
+  dsymutil_version=$($dsymutil --version 2>/dev/null | \
+    awk '/LLVM version/ {
+      sub(/^.*LLVM version[[:space:]]+/, "")
+      print $1
+      exit
+    }')
+  dsymutil_version=${dsymutil_version:-0.0.0}
+
+  if [[ $dsymutil == *llvm-dsymutil ]]; then
+    is_llvm_prefixed_dsymutil=1
+  else
+    is_llvm_prefixed_dsymutil=0
+  fi
+
+  # dsymutil 3.7 and earlier are broken and have crash issues.
+  if [ $(cmp-version "$dsymutil_version" "<" 3.8) -eq 1 ]; then
+    # Make dsymutil a no-op to avoid build failures.
+    echo "Old/broken $dsymutil version $dsymutil_version detected. Making dsymutil a no-op." 1>&2
+    dsymutil=$(which true)
+  fi
+
+  if [ $is_llvm_prefixed_dsymutil -eq 1 ]; then
+    # This is llvm-dsymutil (with llvm- prefix).
+    # -> Install a standalone dsymutil symlink, so dsymutil
+    #    without the llvm- prefix is available as command.
+    verbose_cmd create_symlink $dsymutil "dsymutil"
+  fi
+
+  for ARCH in $SUPPORTED_ARCHS; do
+    case "$ARCH" in
+      arm64)
+        verbose_cmd create_symlink $dsymutil "aarch64-apple-$TARGET-dsymutil"
+        ;;
+    esac
+
+    verbose_cmd create_symlink $dsymutil "$ARCH-apple-$TARGET-dsymutil"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Symlink installation
+# ---------------------------------------------------------------------------
+
 pushd "${TARGET_DIR}/bin" &>/dev/null
 
 if [ $TARGETCOMPILER = "clang" ]; then
-  create_wrapper_link clang 2
-  create_wrapper_link clang++ 2
-  create_wrapper_link clang++-libc++ 2
-  create_wrapper_link clang++-stdc++ 2
-  create_wrapper_link clang++-gstdc++ 2
+  install_program_links clang "$SUPPORTED_ARCHS" enable_shortcuts
+  install_program_links clang++ "$SUPPORTED_ARCHS" enable_shortcuts
+  install_program_links clang++-libc++ "$SUPPORTED_ARCHS" enable_shortcuts
+  install_program_links clang++-stdc++ "$SUPPORTED_ARCHS" enable_shortcuts
+  install_program_links clang++-gstdc++ "$SUPPORTED_ARCHS" enable_shortcuts
 elif [ $TARGETCOMPILER = "gcc" ]; then
-  create_wrapper_link gcc 2
-  create_wrapper_link g++ 2
-  create_wrapper_link g++-libc++ 2
+  install_program_links gcc "$GCC_TARGET_ARCHS" enable_shortcuts
+  install_program_links g++ "$GCC_TARGET_ARCHS" enable_shortcuts
+  install_program_links g++-libc++ "$GCC_TARGET_ARCHS" enable_shortcuts
 fi
 
-create_wrapper_link cc
-create_wrapper_link c++
+install_program_links cc "$SUPPORTED_ARCHS"
+install_program_links c++ "$SUPPORTED_ARCHS"
 
-create_wrapper_link osxcross 1
-create_wrapper_link osxcross-conf 1
-create_wrapper_link osxcross-env 1
-create_wrapper_link osxcross-cmp 1
-create_wrapper_link osxcross-man 1
-create_wrapper_link pkg-config
+if [ "$BUILD_FLAVOR" = "llvm" ]; then
+  install_program_links ld "$SUPPORTED_ARCHS"
+  install_program_links otool "$SUPPORTED_ARCHS" enable_standalone
+  # LLVM dsymutil invokes "lipo" directly, even in recent releases such as 22.1.8.
+  # Provide a standalone lipo link so llvm-dsymutil will find the tool.
+  install_program_links lipo "$SUPPORTED_ARCHS" enable_standalone
+  install_program_links nm "$SUPPORTED_ARCHS"
+  install_program_links ar "$SUPPORTED_ARCHS"
+  install_program_links libtool "$SUPPORTED_ARCHS"
+  install_program_links install_name_tool "$SUPPORTED_ARCHS"
+  install_program_links ranlib "$SUPPORTED_ARCHS"
+  install_program_links readtapi "$SUPPORTED_ARCHS"
+  install_program_links objdump "$SUPPORTED_ARCHS"
+  install_program_links strip "$SUPPORTED_ARCHS"
+  install_program_links strings "$SUPPORTED_ARCHS"
+  install_program_links size "$SUPPORTED_ARCHS"
+  install_program_links symbolizer "$SUPPORTED_ARCHS"
+  install_program_links cov "$SUPPORTED_ARCHS"
+  install_program_links profdata "$SUPPORTED_ARCHS"
+  install_program_links readobj "$SUPPORTED_ARCHS"
+  install_program_links readelf "$SUPPORTED_ARCHS"
+  install_program_links dwarfdump "$SUPPORTED_ARCHS"
+  install_program_links cxxfilt "$SUPPORTED_ARCHS"
+  install_program_links objcopy "$SUPPORTED_ARCHS"
+  install_program_links config "$SUPPORTED_ARCHS"
+  install_program_links as "$SUPPORTED_ARCHS"
+  install_program_links dis "$SUPPORTED_ARCHS"
+  install_program_links link "$SUPPORTED_ARCHS"
+  install_program_links lto "$SUPPORTED_ARCHS"
+  install_program_links lto2 "$SUPPORTED_ARCHS"
+  install_program_links bcanalyzer "$SUPPORTED_ARCHS"
+  install_program_links bitcode_strip "$SUPPORTED_ARCHS"
+fi
 
+install_program_links osxcross "$SUPPORTED_ARCHS" enable_standalone
+install_program_links osxcross-conf "$SUPPORTED_ARCHS" enable_standalone
+install_program_links osxcross-env "$SUPPORTED_ARCHS" enable_standalone
+install_program_links osxcross-man "$SUPPORTED_ARCHS" enable_standalone
+install_program_links pkg-config "$SUPPORTED_ARCHS"
+
+# Darwin provides these tools itself. Other hosts need wrapper links.
 if [ "$PLATFORM" != "Darwin" ]; then
-  create_wrapper_link sw_vers 1
-
-  if which dsymutil &>/dev/null; then
-    # If dsymutil is in PATH then it's most likely a recent
-    # LLVM dsymutil version. In this case don't wrap it.
-    # Just create target symlinks.
-
-    for ARCH in $SUPPORTED_ARCHS; do
-      verbose_cmd create_symlink "$(which dsymutil)" "$ARCH-apple-$TARGET-dsymutil"
-    done
-  else
-    create_wrapper_link dsymutil 1
-  fi
-
-  create_wrapper_link xcrun 1
-  create_wrapper_link xcodebuild 1
+  install_dsymutil_links
+  install_program_links sw_vers "$SUPPORTED_ARCHS" enable_standalone
+  install_program_links xcrun "$SUPPORTED_ARCHS" enable_standalone
+  install_program_links xcodebuild "$SUPPORTED_ARCHS" enable_standalone
 fi
 
 popd &>/dev/null

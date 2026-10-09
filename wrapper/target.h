@@ -46,26 +46,32 @@ constexpr Compiler getDefaultCXXCompilerIdentifier() {
   return Compiler::CLANGXX;
 }
 
-constexpr const char *getSupportedArchsString() { return OSXCROSS_SUPPORTED_ARCHS; }
-
-static inline std::vector<Arch> getSupportedArchs() {
-  std::vector<Arch> result;
-  std::istringstream iss(OSXCROSS_SUPPORTED_ARCHS);
-  std::string token;
-  while (iss >> token) {
-    result.push_back(parseArch(token.c_str()));
-  }
-  return result;
+constexpr const char *getSupportedArchsString(bool GCC = false) {
+  return GCC ? OSXCROSS_GCC_TARGET_ARCHS
+             : OSXCROSS_SUPPORTED_ARCHS;
 }
 
-static inline Arch getDefaultArch() {
-  std::istringstream iss(OSXCROSS_SUPPORTED_ARCHS);
+static inline std::vector<Arch> getSupportedArchs(bool GCC = false) {
+  std::vector<Arch> result;
+  std::istringstream iss(GCC ? OSXCROSS_GCC_TARGET_ARCHS
+                             : OSXCROSS_SUPPORTED_ARCHS);
+  std::string token;
+
+  while (iss >> token)
+    result.push_back(parseArch(token.c_str()));
+
+  return result;
+}
+static inline Arch getDefaultArch(bool GCC = false) {
+  std::istringstream iss(GCC ? OSXCROSS_GCC_TARGET_ARCHS
+                             : OSXCROSS_SUPPORTED_ARCHS);
   std::string first;
   iss >> first;
   return parseArch(first.c_str());
 }
 
 constexpr const char *getLinkerVersion() { return OSXCROSS_LINKER_VERSION; }
+
 constexpr const char *getBuildDir() { return OSXCROSS_BUILD_DIR; }
 
 constexpr const char *getLibLTOPath() {
@@ -106,6 +112,48 @@ inline const char *getSDKSearchDir() {
   return SDKSearchDir ? SDKSearchDir : "";
 }
 
+// Build flavor
+
+constexpr const char *getBuildFlavor() {
+#ifdef OSXCROSS_BUILD_FLAVOR
+  return OSXCROSS_BUILD_FLAVOR[0] ? OSXCROSS_BUILD_FLAVOR : "unknown";
+#else
+  return "unknown";
+#endif
+}
+
+class BuildFlavor {
+public:
+  BuildFlavor(const char *value = getBuildFlavor()) : type_(Parse(value)) {}
+
+  bool IsStable() const { return type_ == Stable; }
+  bool IsLatest() const { return type_ == Latest; }
+  bool IsLLVM() const { return type_ == LLVM; }
+  bool IsValid() const { return type_ != Unknown; }
+
+private:
+  enum {
+    Stable,
+    Latest,
+    LLVM,
+    Unknown
+  };
+
+  static int Parse(const char *value) {
+    if (!value || !*value)
+      return Unknown;
+    if (!strcmp(value, "stable"))
+      return Stable;
+    if (!strcmp(value, "latest"))
+      return Latest;
+    if (!strcmp(value, "llvm"))
+      return LLVM;
+    return Unknown;
+  }
+
+  int type_;
+};
+
 //
 // Target
 //
@@ -140,13 +188,15 @@ struct Target {
 
   bool isKnownCompiler() const;
 
-  const std::string &getDefaultTriple(std::string &triple) const;
+  const std::string &buildDefaultTriple(std::string &triple, bool GCC = false, bool useAarch64InsteadOfArm64 = false) const;
+
   const std::string &getTriple() const { return triple; }
 
   void setCompilerPath();
   bool findClangIntrinsicHeaders(std::string &path);
 
   void setupGCCLibs(Arch arch);
+  void setTriple(bool useAarch64InsteadOfArm64 = false);
   bool setup();
 
   const char *vendor;
@@ -166,12 +216,12 @@ struct Target {
   std::string compilername;     // clang | gcc
   std::string compilerexecname; // clang | *-apple-darwin-gcc
   std::string triple;
-  std::string otriple;
   string_vector fargs;
   string_vector args;
   const char *language;
   char execpath[PATH_MAX + 1];
   std::string intrinsicpath;
+  BuildFlavor buildFlavor;
 };
 
 } // namespace target
