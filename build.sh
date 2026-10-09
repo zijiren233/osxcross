@@ -294,8 +294,18 @@ function build_stable()
     [ -n "$DISABLE_CLANG_AS" ] && CONFFLAGS+="--disable-clang-as "
     [ -n "$DISABLE_LTO_SUPPORT" ] && CONFFLAGS+="--disable-lto-support "
     ./configure $CONFFLAGS
-    $MAKE -j$JOBS
-    $MAKE install -j$JOBS
+
+    # cctools' configure overwrites include/llvm-c/lto.h and ExternC.h
+    # with copies taken from the detected LLVM (llvm-config) but does not
+    # add its include dir to the header search path; lto.h from LLVM >= 21
+    # includes llvm-c/Visibility.h (which further includes generated
+    # llvm/Config headers), so compilation fails to resolve them.
+    MAKEFLAGS_LTO=
+    if [ -z "$DISABLE_LTO_SUPPORT" ] && command -v llvm-config >/dev/null 2>&1; then
+      MAKEFLAGS_LTO="CPPFLAGS=-isystem $(llvm-config --includedir)"
+    fi
+    $MAKE -j $JOBS $MAKEFLAGS_LTO
+    $MAKE install -j$JOBS $MAKEFLAGS_LTO
     popd &>/dev/null
   fi
 }
@@ -366,8 +376,18 @@ function build_latest()
     [ -n "$DISABLE_CLANG_AS" ] && CONFFLAGS+="--disable-clang-as "
     [ -n "$DISABLE_LTO_SUPPORT" ] && CONFFLAGS+="--disable-lto-support "
     ./configure $CONFFLAGS
-    $MAKE -j$JOBS
-    $MAKE install -j$JOBS
+
+    # cctools' configure overwrites include/llvm-c/lto.h and ExternC.h
+    # with copies taken from the detected LLVM (llvm-config) but does not
+    # add its include dir to the header search path; lto.h from LLVM >= 21
+    # includes llvm-c/Visibility.h (which further includes generated
+    # llvm/Config headers), so compilation fails to resolve them.
+    MAKEFLAGS_LTO=
+    if [ -z "$DISABLE_LTO_SUPPORT" ] && command -v llvm-config >/dev/null 2>&1; then
+      MAKEFLAGS_LTO="CPPFLAGS=-isystem $(llvm-config --includedir)"
+    fi
+    $MAKE -j $JOBS $MAKEFLAGS_LTO
+    $MAKE install -j$JOBS $MAKEFLAGS_LTO
     popd &>/dev/null
   fi
 }
