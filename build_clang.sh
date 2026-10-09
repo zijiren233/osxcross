@@ -154,6 +154,14 @@ if [ $GITPROJECT == "apple" ]; then
   popd &>/dev/null
 fi
 
+if [ $GITPROJECT == "apple" ] && [[ $CLANG_VERSION == 23* ]]; then
+  # swiftlang stable/20260609 calls abort() in DenseMapInfo.h without
+  # including <cstdlib>; the declaration is not transitively provided by
+  # libstdc++, so the g++ stage 1 build fails
+  $SED -i 's/#include <cassert>/#include <cassert>\
+\#include <cstdlib>/' *llvm*/llvm/include/llvm/ADT/DenseMapInfo.h
+fi
+
 if ([[ $CLANG_VERSION == 18* ]] || [[ $CLANG_VERSION == 17* ]] ||
     [[ $CLANG_VERSION == 16* ]] || [[ $CLANG_VERSION == 15* ]] ||
     [[ $CLANG_VERSION == 14* ]] || [[ $CLANG_VERSION == 13* ]] ||
