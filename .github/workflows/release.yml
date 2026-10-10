@@ -94,6 +94,10 @@ jobs:
 
       - name: Build Apple Clang
         run: |
+          for i in 1 2 3 4 5; do
+            docker pull 'ubuntu:${{ matrix.ubuntu_version }}' && break
+            echo "docker pull failed, retry $i in 60s"; sleep 60
+          done
           docker run --rm \
             --volume "${PWD}:/osxcross" \
             --workdir /osxcross \
@@ -267,6 +271,10 @@ jobs:
 
       - name: Build osxcross
         run: |
+          for i in 1 2 3 4 5; do
+            docker pull 'ubuntu:${{ matrix.ubuntu_version }}' && break
+            echo "docker pull failed, retry $i in 60s"; sleep 60
+          done
           docker run --rm \
             --volume "${PWD}:/osxcross" \
             --workdir /osxcross \
