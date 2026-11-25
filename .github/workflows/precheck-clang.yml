@@ -1,0 +1,107 @@
+name: Precheck (Apple Clang)
+
+# The Apple Clang build is the longest job of a release and nothing else can
+# start before it is done. Run it ahead of a release on the extremes of the
+# release matrix, whenever one of its inputs changes.
+
+on:
+  push:
+    branches:
+      - "precheck/**"
+    paths:
+      - "build_apple_clang.sh"
+      - "build_clang.sh"
+      - "tools/**"
+      - ".github/workflows/precheck-clang.yml"
+
+jobs:
+  build_apple_clang:
+    name: Build Apple Clang
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ubuntu: 20.04
+            runs-on: ubuntu-24.04-arm
+          - ubuntu: 26.04
+            runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Apple Clang build script
+        run: |
+          cat > build_apple_clang_script.sh << 'EOF'
+          #!/bin/bash
+          set -e
+
+          echo "Building Apple Clang for Ubuntu $1"
+          echo "Architecture: $(uname -m)"
+
+          # Update package list and install dependencies
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update && apt-get install -y \
+            curl \
+            wget \
+            make \
+            cmake \
+            unzip \
+            git \
+            patch \
+            python3 \
+            libssl-dev \
+            liblzma-dev \
+            libxml2-dev \
+            xz-utils \
+            bzip2 \
+            cpio \
+            zlib1g-dev \
+            llvm-dev \
+            uuid-dev \
+            lsb-release \
+            software-properties-common \
+            gnupg \
+            build-essential \
+            ninja-build
+
+          # Download and install CMake
+          mkdir -p /cmake
+          if [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "amd64" ]; then
+            curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz | tar -xz -C /cmake --strip-components=1
+          elif [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+            curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-aarch64.tar.gz | tar -xz -C /cmake --strip-components=1
+          else
+            echo "Unsupported architecture: $(uname -m)"
+            exit 1
+          fi
+          export PATH=/cmake/bin:$PATH
+
+          # Build Apple Clang
+          export INSTALLPREFIX=/usr/local/apple-clang
+          export CLANG_VERSION=23
+          UNATTENDED=1 ENABLE_CLANG_INSTALL=1 PORTABLE=1 JOBS=$(nproc) bash build_apple_clang.sh
+
+          # Smoke test: the compiler emits a Mach-O object for each target, and
+          # the linkers and the tools the osxcross build looks for are installed
+          printf 'int main(void){return 0;}\n' > /tmp/empty.c
+          for target in x86_64-apple-darwin arm64-apple-darwin; do
+            $INSTALLPREFIX/bin/clang -target $target -c /tmp/empty.c -o /tmp/empty-$target.o
+          done
+          $INSTALLPREFIX/bin/clang --version | head -2
+          $INSTALLPREFIX/bin/ld64.lld --version
+          ls $INSTALLPREFIX/bin | wc -l
+          EOF
+
+          chmod +x build_apple_clang_script.sh
+
+      - name: Build Apple Clang
+        run: |
+          for i in 1 2 3 4 5; do
+            docker pull 'ubuntu:${{ matrix.ubuntu }}' && break
+            echo "docker pull failed, retry $i in 60s"; sleep 60
+          done
+          docker run --rm \
+            --volume "${PWD}:/osxcross" \
+            --workdir /osxcross \
+            ubuntu:${{ matrix.ubuntu }} \
+            /bin/bash -c "/osxcross/build_apple_clang_script.sh '${{ matrix.ubuntu }}'"
