@@ -12,7 +12,7 @@ on:
       - "precheck/**"
 
 env:
-  PREVIOUS_RELEASE: v0.2.8
+  PREVIOUS_RELEASE: v0.2.9
 
 jobs:
   package_sdks:
