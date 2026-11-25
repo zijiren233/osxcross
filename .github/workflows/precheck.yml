@@ -1,0 +1,131 @@
+name: Precheck
+
+on:
+  push:
+    branches:
+      - "precheck/**"
+
+jobs:
+  package_sdks:
+    uses: ./.github/workflows/sdk.yml
+
+  build_osxcross:
+    name: Build osxcross
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sdk: 26-5
+            ubuntu: 24.04
+            runs-on: ubuntu-latest
+          - sdk: 26-5
+            ubuntu: 24.04
+            runs-on: ubuntu-24.04-arm
+          - sdk: 26-5
+            ubuntu: 20.04
+            runs-on: ubuntu-latest
+          - sdk: 15-5
+            ubuntu: 26.04
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create build script
+        run: |
+          cat > build_script.sh << 'EOF'
+          #!/bin/bash
+          set -e
+
+          echo "Building osxcross for Ubuntu $1 with SDK $2"
+          echo "Architecture: $(uname -m)"
+
+          # Update package list and install dependencies
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update && apt-get install -y \
+            curl \
+            wget \
+            make \
+            cmake \
+            unzip \
+            git \
+            patch \
+            python3 \
+            libssl-dev \
+            liblzma-dev \
+            libxml2-dev \
+            xz-utils \
+            bzip2 \
+            cpio \
+            zlib1g-dev \
+            llvm-dev \
+            uuid-dev \
+            lsb-release \
+            software-properties-common \
+            gnupg \
+            build-essential \
+            ninja-build
+
+          export TARGET_DIR=/usr/local/osxcross
+          CLANG_DIR=$TARGET_DIR/clang
+          mkdir -p $CLANG_DIR
+
+          # Apple Clang and SDK from the previous release
+          if [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "amd64" ]; then
+            ARCH=x86_64
+          elif [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+            ARCH=aarch64
+          else
+            echo "Unsupported architecture: $(uname -m)"
+            exit 1
+          fi
+          mkdir -p /osxcross/apple-clang /osxcross/tarballs
+          RELEASE=https://github.com/zijiren233/osxcross/releases/download/v0.2.8
+          curl -fsSL --retry 5 -o /osxcross/apple-clang/apple-clang.tar.gz \
+            $RELEASE/apple-clang-23-linux-$ARCH-gnu-ubuntu-$1.tar.gz
+          curl -fsSL --retry 5 -o /osxcross/tarballs/MacOSX$(echo $2 | sed 's/-/./g').sdk.tar.xz \
+            $RELEASE/MacOSX$(echo $2 | sed 's/-/./g').sdk.tar.xz
+
+          # Extract and setup Apple Clang
+          tar -xzf /osxcross/apple-clang/*.tar.gz -C $CLANG_DIR
+          export PATH=$CLANG_DIR/bin:$PATH
+
+          # Download and install CMake
+          mkdir -p /cmake
+          if [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "amd64" ]; then
+            curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-x86_64.tar.gz | tar -xz -C /cmake --strip-components=1
+          elif [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+            curl -sSL https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-linux-aarch64.tar.gz | tar -xz -C /cmake --strip-components=1
+          else
+            echo "Unsupported architecture: $(uname -m)"
+            exit 1
+          fi
+          export PATH=/cmake/bin:$PATH
+
+          # Build osxcross
+          export IPHONEOS_DEPLOYMENT_TARGET=5.0
+          UNATTENDED=1 SDK_VERSION="$(echo $2 | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
+
+          # Smoke test: compile and link a program for two targets
+          printf '#include <stdio.h>\nint main(void){puts("ok");return 0;}\n' > /tmp/hello.c
+          for cc in o64-clang arm64-clang; do
+            $TARGET_DIR/bin/$cc /tmp/hello.c -o /tmp/hello-$cc
+            $TARGET_DIR/bin/otool -L /tmp/hello-$cc
+          done
+          ls $TARGET_DIR/bin | wc -l
+          $TARGET_DIR/bin/o64-clang --version | head -2
+          EOF
+
+          chmod +x build_script.sh
+
+      - name: Build osxcross
+        run: |
+          for i in 1 2 3 4 5; do
+            docker pull 'ubuntu:${{ matrix.ubuntu }}' && break
+            echo "docker pull failed, retry $i in 60s"; sleep 60
+          done
+          docker run --rm \
+            --volume "${PWD}:/osxcross" \
+            --workdir /osxcross \
+            ubuntu:${{ matrix.ubuntu }} \
+            /bin/bash -c "/osxcross/build_script.sh '${{ matrix.ubuntu }}' '${{ matrix.sdk }}'"
