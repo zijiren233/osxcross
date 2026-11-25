@@ -1,6 +1,8 @@
 
 ## macOS Cross-Toolchain for Linux and \*BSD
 
+See [CHANGELOG.md](CHANGELOG.md) for changes in each version.
+
 ### OSXCross build flavors
 
 OSXCross provides three build flavors:
@@ -12,7 +14,7 @@ OSXCross provides three build flavors:
 
 `latest`:
 
-* Uses `cctools 1030.6.3` and `ld64 956.6`.
+* Uses `cctools 1035.1.102` and `ld64 957.1`.
 * Takes the longest to build because the newer tool versions require additional dependencies.
 
 `llvm`:
@@ -117,7 +119,7 @@ Use `ENABLE_ARCHS` to restrict the build to a supported set of architectures, fo
 ./build.sh
 BUILD_FLAVOR=llvm ./build.sh
 UNATTENDED=1 BUILD_FLAVOR=latest ./build.sh
-TARGET_DIR=/usr/local/osxcross OSX_VERSION_MIN=XX.X ENABLE_ARCHS="<ARCHS>" ./build.sh
+TARGET_DIR=/usr/local/osxcross DEFAULT_DEPLOYMENT_TARGET=XX.X ENABLE_ARCHS="<ARCHS>" ./build.sh
 ```
 
 Add `<target>/bin` to your `PATH` after installation.
@@ -210,13 +212,14 @@ xcrun lipo -create test.x86_64 test.arm64 -output test
 ### Deployment Target
 
 Default:
-* SDK ≤ 10.13 → macOS 10.6
-* SDK ≥ 10.14 → macOS 10.9
-* SDK ≥ 14.0 → macOS 10.13
+* SDK 10.6 – 10.13 → macOS 10.6
+* SDK 10.14 – 12.x → macOS 10.9
+* SDK 13.0 – 26.x → macOS 10.13
+* SDK ≥ 27.0 → macOS 12.0
 
 Can be overriden via:
 
-1. During the build: `OSX_VERSION_MIN=XX.X ./build.sh`.
+1. During the build: `DEFAULT_DEPLOYMENT_TARGET=XX.X ./build.sh`.
 2. By passing `-mmacos-version-min=XX.X` to the compiler.
 3. By setting `MACOSX_DEPLOYMENT_TARGET=XX.X` env var.
 

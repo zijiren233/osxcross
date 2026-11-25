@@ -1,6 +1,8 @@
 *.o
+*.d
 *gcc*.tar.*
 *MacOSX*.*
 cpucount
 build/
 target/
+wrapper/src/obj/

@@ -51,8 +51,8 @@ fi
 export GCC_TARGET_ARCHS
 
 
-if [ $(cmp-version $OSX_VERSION_MIN '<=' 10.5) -eq 1 ]; then
-  echo "You must build OSXCross with OSX_VERSION_MIN >= 10.6" 2>&1
+if [ $(cmp-version $DEFAULT_DEPLOYMENT_TARGET '<=' 10.5) -eq 1 ]; then
+  echo "You must build OSXCross with DEFAULT_DEPLOYMENT_TARGET >= 10.6" 2>&1
   exit 1
 fi
 
@@ -130,6 +130,20 @@ pushd $BUILD_DIR &>/dev/null
 
 source $BASE_DIR/tools/trap_exit.sh
 
+# GCC can build its own GMP, MPFR, MPC and related prerequisites in-tree.
+if [ "$DOWNLOAD_GCC_PREREQUISITES" = "1" ]; then
+  download_gcc_prerequisites=1
+elif [ "$UNATTENDED" = "1" ]; then
+  download_gcc_prerequisites=0
+else
+  read -r -p "Download GCC build prerequisites? [y/N] " response || response=""
+  case "$response" in
+    [yY]|[yY][eE][sS]) download_gcc_prerequisites=1 ;;
+    *) download_gcc_prerequisites=0 ;;
+  esac
+  echo ""
+fi
+
 if [ -n "$BUILD_ARM64_GCC" ]; then
   get_sources https://github.com/iains/$ARM64_GCC_REPO.git
   GCC_SOURCE_DIR=$CURRENT_BUILD_PROJECT_NAME
@@ -162,6 +176,14 @@ GCC_SOURCE_DIR=gcc-$GCC_VERSION
 fi
 
 pushd "$GCC_SOURCE_DIR" &>/dev/null
+
+if [ "$download_gcc_prerequisites" = "1" ]; then
+  echo "Downloading GCC prerequisites ..."
+  if ! ./contrib/download_prerequisites; then
+    echo "Failed to download GCC prerequisites." >&2
+    exit 1
+  fi
+fi
 
 if arch_supported "$GCC_TARGET_ARCHS" aarch64; then
   rm -f "$TARGET_DIR/bin/aarch64-apple-$TARGET-gcc"*
@@ -275,6 +297,42 @@ if [ "$BUILD_FLAVOR" = "llvm" ]; then
     gcc/config/darwin.h
 fi
 
+# BEGIN FIX: Link libgcc_s.1.dylib for macOS >= 10.7 (#485)
+# The legacy libgcc_s.1.dylib compatibility library forwards the unwinder
+# symbols from libSystem using -reexported_symbols_list, which ld64 only
+# supports for macOS >= 10.7. Allow the Makefile to give this one link its own
+# minimum version, independent of the deployment target of the runtime.
+LIBGCC_DARWIN_FRAGMENT=libgcc/config/t-slibgcc-darwin
+if grep -q -- '-Wl,-reexported_symbols_list,' "$LIBGCC_DARWIN_FRAGMENT" &&
+   ! grep -q 'LIBGCC_S1_MIN_VERSION' "$LIBGCC_DARWIN_FRAGMENT"; then
+  $SED -i \
+    's/-Wl,-reexported_symbols_list,/$(LIBGCC_S1_MIN_VERSION) &/' \
+    "$LIBGCC_DARWIN_FRAGMENT"
+  if ! grep -q 'LIBGCC_S1_MIN_VERSION' "$LIBGCC_DARWIN_FRAGMENT"; then
+    echo "Failed to patch $LIBGCC_DARWIN_FRAGMENT" 1>&2
+    exit 1
+  fi
+fi
+# END FIX: Link libgcc_s.1.dylib for macOS >= 10.7 (#485)
+
+# BEGIN FIX: Honor the deployment target in the arm64 libgcc (#485)
+# libgcc/config/aarch64/t-darwin appends a hardcoded -mmacosx-version-min=11.0
+# to HOST_LIBGCC2_CFLAGS. It comes after DARWIN_MIN_LIB_VERSION and wins, so
+# e.g. libgcc_s.dylib would ignore the deployment target. Use
+# DARWIN_MIN_LIB_VERSION (11 by default) instead.
+LIBGCC_AARCH64_DARWIN_FRAGMENT=libgcc/config/aarch64/t-darwin
+if [ -f "$LIBGCC_AARCH64_DARWIN_FRAGMENT" ] &&
+   grep -Fq -- '-mmacosx-version-min=11.0' "$LIBGCC_AARCH64_DARWIN_FRAGMENT"; then
+  $SED -i \
+    's/-mmacosx-version-min=11.0/$(DARWIN_MIN_LIB_VERSION)/' \
+    "$LIBGCC_AARCH64_DARWIN_FRAGMENT"
+  if grep -Fq -- '-mmacosx-version-min=11.0' "$LIBGCC_AARCH64_DARWIN_FRAGMENT"; then
+    echo "Failed to patch $LIBGCC_AARCH64_DARWIN_FRAGMENT" 1>&2
+    exit 1
+  fi
+fi
+# END FIX: Honor the deployment target in the arm64 libgcc (#485)
+
 
 if [[ $PLATFORM == *BSD ]]; then
   export CPATH="/usr/local/include:/usr/pkg/include:$CPATH"
@@ -293,6 +351,18 @@ if [ -n "$ENABLE_FORTRAN" ]; then
 fi
 
 GCC_INSTALL_VERSION=$(echo $GCC_VERSION | tr '-' ' ' | awk '{print $1}')
+
+GCC_CONFIGURE_ENV=()
+GCC_CHECKING=release
+if [ "$GCC_FAST_BUILD" = "1" ]; then
+  # Speed up the host compiler build without changing target runtime flags.
+  GCC_CONFIGURE_ENV=(
+    "CFLAGS=${CFLAGS:+$CFLAGS }-O0 -g0"
+    "CXXFLAGS=${CXXFLAGS:+$CXXFLAGS }-O0 -g0"
+  )
+  GCC_CHECKING=no
+  echo "GCC_FAST_BUILD=1: building without host optimization, debug info or checks."
+fi
 
 for GCC_TARGET_ARCH in $GCC_TARGET_ARCHS; do
   # i386 is built by the x86_64 target through GCC multilib.
@@ -325,21 +395,61 @@ for GCC_TARGET_ARCH in $GCC_TARGET_ARCHS; do
     EXTRACONFFLAGS+="--disable-multilib "
   fi
 
-  ../configure \
+  # BEGIN FIX: Set the GCC runtime build deployment target (#485)
+  # GCC's own default follows the Darwin triple, which can be newer than the
+  # deployment target selected for OSXCross. Build all target runtime libraries
+  # for that deployment target too; changing the wrapper alone is insufficient.
+  GCC_DEPLOYMENT_TARGET=$DEFAULT_DEPLOYMENT_TARGET
+  if [ "$GCC_TARGET_ARCH" = "aarch64" ] &&
+     [ "$(cmp-version "$GCC_DEPLOYMENT_TARGET" '<' 11.0)" -eq 1 ]; then
+    GCC_DEPLOYMENT_TARGET=11.0
+  fi
+  GCC_DEPLOYMENT_FLAG="-mmacosx-version-min=$GCC_DEPLOYMENT_TARGET"
+
+  # Libtool omits compiler flags in some intermediate link steps. Supply the
+  # environment default as well, so those steps use the same deployment target.
+  GCC_BUILD_ENV=("MACOSX_DEPLOYMENT_TARGET=$GCC_DEPLOYMENT_TARGET")
+  # END FIX: Set the GCC runtime build deployment target (#485)
+
+  env "${GCC_BUILD_ENV[@]}" "${GCC_CONFIGURE_ENV[@]}" ../configure \
     --target=$GCC_TARGET_TRIPLE \
     --with-sysroot=$SDK \
     --disable-nls \
     --enable-languages=$LANGS \
     --without-headers \
     --enable-lto \
-    --enable-checking=release \
+    --enable-checking=$GCC_CHECKING \
     --disable-libstdcxx-pch \
     --prefix=$TARGET_DIR \
     --with-system-zlib \
     $EXTRACONFFLAGS
 
-  $MAKE -j$JOBS
-  $MAKE install
+  # BEGIN FIX: Set libgcc and CRT build deployment targets (#485)
+  # libgcc's Darwin make fragments append their own minimum versions. GCC's
+  # top-level makefile clears MAKEOVERRIDES, including when it recurses into
+  # itself. Keep these target-only overrides in the generated makefile so they
+  # survive every level of recursion without replacing GCC's normal flags.
+  printf 'override EXTRA_TARGET_FLAGS += "%s" "%s"\n' \
+    "DARWIN_MIN_LIB_VERSION=$GCC_DEPLOYMENT_FLAG" \
+    "DARWIN_MIN_CRT_VERSION=$GCC_DEPLOYMENT_FLAG" >> Makefile
+  # libgcc_s.1.dylib forwards the unwinder symbols from libSystem using
+  # -reexported_symbols_list, which ld64 only supports for macOS >= 10.7.
+  # SDKs older than 10.7 cannot build it, so skip it there. Otherwise link it
+  # for at least 10.7, even if the runtime deployment target is older.
+  if [ "$(cmp-version "$SDK_VERSION" '<' 10.7)" -eq 1 ]; then
+    printf 'override EXTRA_TARGET_FLAGS += "%s"\n' "BUILD_LIBGCCS1=NO" >> Makefile
+  else
+    GCC_LIBGCC_S1_DEPLOYMENT_TARGET=$GCC_DEPLOYMENT_TARGET
+    if [ "$(cmp-version "$GCC_LIBGCC_S1_DEPLOYMENT_TARGET" '<' 10.7)" -eq 1 ]; then
+      GCC_LIBGCC_S1_DEPLOYMENT_TARGET=10.7
+    fi
+    printf 'override EXTRA_TARGET_FLAGS += "%s"\n' \
+      "LIBGCC_S1_MIN_VERSION=-mmacosx-version-min=$GCC_LIBGCC_S1_DEPLOYMENT_TARGET" >> Makefile
+  fi
+  # END FIX: Set libgcc and CRT build deployment targets (#485)
+
+  env "${GCC_BUILD_ENV[@]}" $MAKE -j$JOBS
+  env "${GCC_BUILD_ENV[@]}" $MAKE install
 
   popd &>/dev/null # build
 

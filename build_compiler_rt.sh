@@ -16,21 +16,7 @@ if [ $PLATFORM == "Darwin" ]; then
   exit 1
 fi
 
-CLANG_VERSION=$(echo "__clang_major__ __clang_minor__ __clang_patchlevel__" | \
- xcrun clang -xc -E - | tail -n1 | tr ' ' '.')
-
-# Drop patch level for <= 3.3.
-if [ $(cmp-version $CLANG_VERSION "<=" 3.3) -eq 1 ]; then
-  CLANG_VERSION=$(echo $CLANG_VERSION | tr '.' ' ' |
-                  awk '{print $1, $2}' | tr ' ' '.')
-fi
-
-CLANG_LIB_DIR=$(clang -print-search-dirs | grep "libraries: =" | \
-                tr '=' ' ' | tr ':' ' ' | awk '{print $2}')
-
-VERSION=$(echo "${CLANG_LIB_DIR}" | tr '/' '\n' | tail -n1)
-CLANG_INCLUDE_DIR="${CLANG_LIB_DIR}/include"
-CLANG_DARWIN_LIB_DIR="${CLANG_LIB_DIR}/lib/darwin"
+detect_clang_version_and_dirs
 
 USE_CMAKE=0
 
@@ -62,8 +48,9 @@ case $CLANG_VERSION in
   20.* ) BRANCH=release/20.x;    USE_CMAKE=1; ;;
   21.* ) BRANCH=release/21.x;    USE_CMAKE=1; ;;
   22.* ) BRANCH=release/22.x;    USE_CMAKE=1; ;;
-  23.* ) BRANCH=main;            USE_CMAKE=1; ;;
-     * ) echo "Unsupported Clang version, must be >= 3.2 and <= 22.x" 1>&2; exit 1;
+  23.* ) BRANCH=release/23.x;    USE_CMAKE=1; ;;
+  24.* ) BRANCH=main;            USE_CMAKE=1; ;;
+     * ) echo "Unsupported Clang version, must be >= 3.2 and <= 24.x" 1>&2; exit 1;
 esac
 
 HAVE_OS_LOCK=0
@@ -167,7 +154,7 @@ if [ $f_res -eq 1 ]; then
           extra_cmake_flags+="-DCOMPILER_RT_BUILD_SANITIZERS=OFF "
           extra_cmake_flags+="-DCOMPILER_RT_BUILD_XRAY=OFF "
         elif [ "$arch" = "x86_64h" ]; then
-          if [ $(cmp-version $OSXCROSS_OSX_VERSION_MIN "<" 10.8) -eq 1 ]; then
+          if [ $(cmp-version $DEFAULT_DEPLOYMENT_TARGET "<" 10.8) -eq 1 ]; then
             export MACOSX_DEPLOYMENT_TARGET=10.8
           fi
         fi
@@ -299,7 +286,7 @@ if [ $f_res -eq 1 ]; then
     ### MAKE ###
 
      if arch_supported $ARCHS "x86_64h"; then
-      if [ $(cmp-version $OSXCROSS_OSX_VERSION_MIN "<" 10.8) -eq 1 ]; then
+      if [ $(cmp-version $DEFAULT_DEPLOYMENT_TARGET "<" 10.8) -eq 1 ]; then
         export MACOSX_DEPLOYMENT_TARGET=10.8
       fi
     fi

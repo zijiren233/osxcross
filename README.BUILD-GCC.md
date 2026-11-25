@@ -11,6 +11,12 @@ Debian/Ubuntu:
 sudo apt-get install gcc g++ zlib1g-dev libmpc-dev libmpfr-dev libgmp-dev
 ```
 
+GCC's `contrib/download_prerequisites` can download and build dependencies
+in the GCC source tree. The build script asks whether to download them; the
+default is no. Set `DOWNLOAD_GCC_PREREQUISITES=1` to download them without
+a prompt, including with `UNATTENDED=1`. Unattended builds otherwise skip
+the download and use available system dependencies.
+
 ## Build the ARM64 Darwin GCC fork
 
 Run `./build_gcc_with_arm64_support.sh` to build the ARM64 Darwin
@@ -37,7 +43,8 @@ Set `ARM64_GCC_REPO` to build a different repository; it defaults to
 
 ## Notes
 
-- To enable `-Werror=implicit-function-declaration`, set
-  `OSXCROSS_ENABLE_WERROR_IMPLICIT_FUNCTION_DECLARATION=1`
 - To disable static linking: `OSXCROSS_GCC_NO_STATIC_RUNTIME=1`
+- Clang uses `-femulated-tls` by default with the libstdc++ installed by
+  `build_gcc.sh` (`clang++-gstdc++` or `-foc-use-gcc-libstdc++`). Override
+  this with `-fno-emulated-tls`.
 - `*-g++-libc++` uses Clang's libc++ — only use if needed

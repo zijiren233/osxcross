@@ -5,26 +5,25 @@
 # This script requires the OS X SDK and the Clang/LLVM compiler.
 #
 
-VERSION=3.0
+VERSION=3.1.3
 
 # Stable build flavor: cctools and ld64 versions
 STABLE_CCTOOLS_VERSION=986
 STABLE_LINKER_VERSION=711
 
 # Latest build flavor: cctools and ld64 versions
-LATEST_CCTOOLS_VERSION=1030.6.3
-LATEST_LINKER_VERSION=956.6
+LATEST_CCTOOLS_VERSION=1035.1.102
+LATEST_LINKER_VERSION=957.1
 
 # LLVM build flavor: optional cctools lipo compatibility tool
 LLVM_LIPO_VERSION=1010.6
 
 pushd "${0%/*}" &>/dev/null
 
-echo "OSXCross $VERSION"
-echo "------------"
-echo ""
-
 source tools/tools.sh
+
+print_heading "OSXCross $VERSION"
+echo ""
 
 if [ -z "$SDK_VERSION" ]; then
   guess_sdk_version
@@ -44,58 +43,59 @@ case $SDK_VERSION in
 esac
 
 case $SDK_VERSION in
-  10.6*)    TARGET=darwin10;   SUPPORTED_ARCHS="i386 x86_64";                 NEED_TAPI_SUPPORT=0; OSX_VERSION_MIN_INT=10.6 ;;
-  10.7*)    TARGET=darwin11;   SUPPORTED_ARCHS="i386 x86_64";                 NEED_TAPI_SUPPORT=0; OSX_VERSION_MIN_INT=10.6 ;;
-  10.8*)    TARGET=darwin12;   SUPPORTED_ARCHS="i386 x86_64 x86_64h";         NEED_TAPI_SUPPORT=0; OSX_VERSION_MIN_INT=10.6 ;;
-  10.9*)    TARGET=darwin13;   SUPPORTED_ARCHS="i386 x86_64 x86_64h";         NEED_TAPI_SUPPORT=0; OSX_VERSION_MIN_INT=10.6 ;;
-  10.10*)   TARGET=darwin14;   SUPPORTED_ARCHS="i386 x86_64 x86_64h";         NEED_TAPI_SUPPORT=0; OSX_VERSION_MIN_INT=10.6 ;;
-  10.11*)   TARGET=darwin15;   SUPPORTED_ARCHS="i386 x86_64 x86_64h";         NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.6 ;;
-  10.12*)   TARGET=darwin16;   SUPPORTED_ARCHS="i386 x86_64 x86_64h";         NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.6 ;;
-  10.13*)   TARGET=darwin17;   SUPPORTED_ARCHS="i386 x86_64 x86_64h";         NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.6 ;;
-  10.14*)   TARGET=darwin18;   SUPPORTED_ARCHS="x86_64 x86_64h";              NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
-  10.15*)   TARGET=darwin19;   SUPPORTED_ARCHS="x86_64 x86_64h";              NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
-  10.16*)   TARGET=darwin20;   SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
+  10.6*)    TARGET=darwin10;   SUPPORTED_ARCHS="i386 x86_64";                 NEED_TAPI_SUPPORT=0; SDK_DEFAULT_DEPLOYMENT_TARGET=10.6 ;;
+  10.7*)    TARGET=darwin11;   SUPPORTED_ARCHS="i386 x86_64";                 NEED_TAPI_SUPPORT=0; SDK_DEFAULT_DEPLOYMENT_TARGET=10.6 ;;
+  10.8*)    TARGET=darwin12;   SUPPORTED_ARCHS="i386 x86_64 x86_64h";         NEED_TAPI_SUPPORT=0; SDK_DEFAULT_DEPLOYMENT_TARGET=10.6 ;;
+  10.9*)    TARGET=darwin13;   SUPPORTED_ARCHS="i386 x86_64 x86_64h";         NEED_TAPI_SUPPORT=0; SDK_DEFAULT_DEPLOYMENT_TARGET=10.6 ;;
+  10.10*)   TARGET=darwin14;   SUPPORTED_ARCHS="i386 x86_64 x86_64h";         NEED_TAPI_SUPPORT=0; SDK_DEFAULT_DEPLOYMENT_TARGET=10.6 ;;
+  10.11*)   TARGET=darwin15;   SUPPORTED_ARCHS="i386 x86_64 x86_64h";         NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.6 ;;
+  10.12*)   TARGET=darwin16;   SUPPORTED_ARCHS="i386 x86_64 x86_64h";         NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.6 ;;
+  10.13*)   TARGET=darwin17;   SUPPORTED_ARCHS="i386 x86_64 x86_64h";         NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.6 ;;
+  10.14*)   TARGET=darwin18;   SUPPORTED_ARCHS="x86_64 x86_64h";              NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.9 ;;
+  10.15*)   TARGET=darwin19;   SUPPORTED_ARCHS="x86_64 x86_64h";              NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.9 ;;
 
-  11|11.0*) TARGET=darwin20.1; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
-  11.1*)    TARGET=darwin20.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
-  11.2*)    TARGET=darwin20.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
-  11.3*)    TARGET=darwin20.4; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
+  11|11.0*) TARGET=darwin20.1; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.9 ;;
+  11.1*)    TARGET=darwin20.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.9 ;;
+  11.2*)    TARGET=darwin20.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.9 ;;
+  11.3*)    TARGET=darwin20.4; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.9 ;;
 
-  12|12.0*) TARGET=darwin21.1; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
-  12.1*)    TARGET=darwin21.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
-  12.2*)    TARGET=darwin21.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
-  12.3*)    TARGET=darwin21.4; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
-  12.4*)    TARGET=darwin21.5; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
+  12|12.0*) TARGET=darwin21.1; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.9 ;;
+  12.1*)    TARGET=darwin21.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.9 ;;
+  12.2*)    TARGET=darwin21.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.9 ;;
+  12.3*)    TARGET=darwin21.4; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.9 ;;
+  12.4*)    TARGET=darwin21.5; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.9 ;;
 
-  13|13.0*) TARGET=darwin22.1; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
-  13.1*)    TARGET=darwin22.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
-  13.2*)    TARGET=darwin22.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
-  13.3*)    TARGET=darwin22.4; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.9 ;;
+  13|13.0*) TARGET=darwin22.1; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  13.1*)    TARGET=darwin22.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  13.2*)    TARGET=darwin22.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  13.3*)    TARGET=darwin22.4; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
 
-  14|14.0*) TARGET=darwin23;   SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  14.1*)    TARGET=darwin23.1; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  14.2*)    TARGET=darwin23.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  14.3*)    TARGET=darwin23.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  14.4*)    TARGET=darwin23.4; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  14.5*)    TARGET=darwin23.5; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  14.6*)    TARGET=darwin23.6; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
+  14|14.0*) TARGET=darwin23;   SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  14.1*)    TARGET=darwin23.1; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  14.2*)    TARGET=darwin23.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  14.3*)    TARGET=darwin23.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  14.4*)    TARGET=darwin23.4; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  14.5*)    TARGET=darwin23.5; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  14.6*)    TARGET=darwin23.6; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
 
-  15|15.0*) TARGET=darwin24;   SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  15.1*)    TARGET=darwin24.1; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  15.2*)    TARGET=darwin24.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  15.3*)    TARGET=darwin24.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  15.4*)    TARGET=darwin24.4; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  15.5*)    TARGET=darwin24.5; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
+  15|15.0*) TARGET=darwin24;   SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  15.1*)    TARGET=darwin24.1; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  15.2*)    TARGET=darwin24.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  15.3*)    TARGET=darwin24.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  15.4*)    TARGET=darwin24.4; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  15.5*)    TARGET=darwin24.5; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
 
-  26|26.0*) TARGET=darwin25;   SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  26.1*)    TARGET=darwin25.1; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  26.2*)    TARGET=darwin25.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  26.3*)    TARGET=darwin25.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  26.4*)    TARGET=darwin25.4; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  26.5*)    TARGET=darwin25.5; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
-  26.6*)    TARGET=darwin25.6; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=10.13 ;;
+  26|26.0*) TARGET=darwin25;   SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  26.1*)    TARGET=darwin25.1; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  26.2*)    TARGET=darwin25.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  26.3*)    TARGET=darwin25.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  26.4*)    TARGET=darwin25.4; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  26.5*)    TARGET=darwin25.5; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
+  26.6*)    TARGET=darwin25.6; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=10.13 ;;
 
-  27|27.0*) TARGET=darwin27;   SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; OSX_VERSION_MIN_INT=11.0 ;;
+  27|27.0*) TARGET=darwin27;   SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=12.0 ;;
+  27.2*)    TARGET=darwin27.2; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=12.0 ;;
+  27.3*)    TARGET=darwin27.3; SUPPORTED_ARCHS="arm64 arm64e x86_64 x86_64h"; NEED_TAPI_SUPPORT=1; SDK_DEFAULT_DEPLOYMENT_TARGET=12.0 ;;
 
   *)
     echo "Error: Unsupported SDK." 1>&2
@@ -103,18 +103,26 @@ case $SDK_VERSION in
     ;;
 esac
 
-# Minimum targeted macOS version
-# Must be <= SDK_VERSION
-if [ -n "$OSX_VERSION_MIN_INT" -a -z "$OSX_VERSION_MIN" ]; then
-  OSX_VERSION_MIN=$OSX_VERSION_MIN_INT
+# Default deployment target: the one the wrapper uses if none is given.
+# Must be <= SDK_VERSION.
+#
+
+if [ -z "$DEFAULT_DEPLOYMENT_TARGET" ]; then
+  # OSX_VERSION_MIN is the old name of DEFAULT_DEPLOYMENT_TARGET. Existing
+  # build setups still use it: keep accepting it, do not remove it.
+  if [ -n "$OSX_VERSION_MIN" ]; then
+    DEFAULT_DEPLOYMENT_TARGET=$OSX_VERSION_MIN
+  else
+    DEFAULT_DEPLOYMENT_TARGET=$SDK_DEFAULT_DEPLOYMENT_TARGET
+  fi
 fi
 
-if [ -n "$OSX_VERSION_MIN" ]; then
-  if [ $(cmp-version $SDK_VERSION "<" $OSX_VERSION_MIN) -eq 1 ]; then
-    echo "OSX_VERSION_MIN must be <= SDK_VERSION" >&2
+if [ -n "$DEFAULT_DEPLOYMENT_TARGET" ]; then
+  if [ $(cmp-version $SDK_VERSION "<" $DEFAULT_DEPLOYMENT_TARGET) -eq 1 ]; then
+    echo "DEFAULT_DEPLOYMENT_TARGET must be <= SDK_VERSION" >&2
     exit 1
-  elif [ $(cmp-version $OSX_VERSION_MIN "<" 10.6) -eq 1 ]; then
-    echo "OSX_VERSION_MIN must be >= 10.6" >&2
+  elif [ $(cmp-version $DEFAULT_DEPLOYMENT_TARGET "<" 10.6) -eq 1 ]; then
+    echo "DEFAULT_DEPLOYMENT_TARGET must be >= 10.6" >&2
     exit 1
   fi
 fi
@@ -202,6 +210,26 @@ if [ "$BUILD_FLAVOR" = "llvm" ]; then
   configure_llvm_flavor
 fi
 
+if [ "$BUILD_FLAVOR" = "llvm" ] &&
+   [ "$(cmp-version "$SDK_VERSION" ">=" 27.0)" -eq 1 ]; then
+  if detect_ld64_lld_version; then
+    if [ "$(cmp-version "$LLD_VERSION" "<" 23.1.3)" -eq 1 ]; then
+      if [ -t 2 ]; then
+        printf '\033[1;33m' >&2
+      fi
+      echo "WARNING: macOS SDK $SDK_VERSION may not work with ld64.lld $LLD_VERSION." >&2
+      echo "Older ld64.lld versions cannot parse arm64e.x1 targets in SDK .tbd files." >&2
+      echo "Use ld64.lld 23.1.3 or newer, or select another build flavor." >&2
+      if [ -t 2 ]; then
+        printf '\033[0m' >&2
+      fi
+    fi
+  else
+    echo "WARNING: Could not determine the ld64.lld version for SDK compatibility check." >&2
+  fi
+  echo ""
+fi
+
 if [ -n "$ENABLE_ARCHS" ]; then
   for arch in $ENABLE_ARCHS; do
     if ! arch_supported "$arch"; then
@@ -215,17 +243,15 @@ fi
 
 export TARGET
 
-echo "Configuration"
-echo "-------------"
+print_heading "Configuration"
 printf "%-26s: %s\n" "Build flavor" "$BUILD_FLAVOR"
 printf "%-26s: macOS %s (%s)\n" "SDK" "$SDK_VERSION" "$SDK_ARCHIVE"
 printf "%-26s: %s\n" "Target" "$TARGET"
-printf "%-26s: %s\n" "Minimum deployment target" "$OSX_VERSION_MIN"
+printf "%-26s: %s\n" "Default deployment target" "$DEFAULT_DEPLOYMENT_TARGET"
 printf "%-26s: %s\n" "Architectures" "${SUPPORTED_ARCHS// /, }"
 
 echo ""
-echo "Directories"
-echo "-----------"
+print_heading "Directories"
 printf "%-17s: %s\n" "Tarballs" "$TARBALL_DIR"
 printf "%-17s: %s\n" "Build" "$BUILD_DIR"
 printf "%-17s: %s\n" "Install" "$TARGET_DIR"
@@ -254,7 +280,10 @@ function build_stable()
 {
   # XAR
 
-  build_xar
+  # macOS provides libxar and its headers through the host SDK.
+  if [[ $PLATFORM != Darwin ]]; then
+    build_xar
+  fi
 
   # XAR END
 
@@ -290,7 +319,9 @@ function build_stable()
     if [ $NEED_TAPI_SUPPORT -eq 1 ]; then
       CONFFLAGS+="--with-libtapi=$TARGET_DIR "
     fi
-    CONFFLAGS+="--with-libxar=$TARGET_DIR "
+    if [[ $PLATFORM != Darwin ]]; then
+      CONFFLAGS+="--with-libxar=$TARGET_DIR "
+    fi
     [ -n "$DISABLE_CLANG_AS" ] && CONFFLAGS+="--disable-clang-as "
     [ -n "$DISABLE_LTO_SUPPORT" ] && CONFFLAGS+="--disable-lto-support "
     # cctools' configure overwrites include/llvm-c/lto.h and ExternC.h
@@ -315,7 +346,10 @@ function build_latest()
 {
   # XAR
 
-  build_xar
+  # macOS provides libxar and its headers through the host SDK.
+  if [[ $PLATFORM != Darwin ]]; then
+    build_xar
+  fi
 
   # XAR END
 
@@ -373,7 +407,9 @@ function build_latest()
       CONFFLAGS+="--with-libblocksruntime=$TARGET_DIR "
       CONFFLAGS+="--with-libtapi=$TARGET_DIR "
     fi
-    CONFFLAGS+="--with-libxar=$TARGET_DIR "
+    if [[ $PLATFORM != Darwin ]]; then
+      CONFFLAGS+="--with-libxar=$TARGET_DIR "
+    fi
     [ -n "$DISABLE_CLANG_AS" ] && CONFFLAGS+="--disable-clang-as "
     [ -n "$DISABLE_LTO_SUPPORT" ] && CONFFLAGS+="--disable-lto-support "
     # cctools' configure overwrites include/llvm-c/lto.h and ExternC.h
@@ -404,8 +440,7 @@ function build_llvm()
 
   if [ -z "${ENABLE_REPLACEMENT_LIPO+x}" ]; then
     echo ""
-    echo "LLVM flavor compatibility"
-    echo "-------------------------"
+    print_heading "LLVM flavor compatibility"
     echo ""
 
     message=$'Use cctools lipo instead of llvm-lipo to improve compatibility?'
@@ -583,13 +618,14 @@ export VERSION
 export BUILD_FLAVOR
 export TARGET
 export BUILD_DIR
-export OSX_VERSION_MIN
+export DEFAULT_DEPLOYMENT_TARGET
 export LIBLTO_PATH
 export LINKER_VERSION
 export SUPPORTED_ARCHS
 export TOP_BUILD_SCRIPT=1
 
 $BASE_DIR/wrapper/build_wrapper.sh
+
 
 echo ""
 
