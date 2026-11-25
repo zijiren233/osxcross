@@ -134,18 +134,20 @@ jobs:
 
           # Smoke test: compile and link a program for two targets, the way the
           # README uses the toolchain (bin directory first in PATH, launchers
-          # under their target name). The cctools of the stable flavor are
-          # installed under their target prefix only.
+          # under their target name). The names come from what the build
+          # installed: the triple of an SDK 27.0 is darwin27, not darwin27.0,
+          # and the cctools of the stable flavor have a target prefix only.
           export PATH=$TARGET_DIR/bin:$PATH
-          target=darwin$(echo $2 | sed 's/-/./g')
+          x86_64_cc=$(set -- "$TARGET_DIR"/bin/x86_64-apple-darwin*-clang; echo "${1##*/}")
+          arm64_cc=$(set -- "$TARGET_DIR"/bin/arm64-apple-darwin*-clang; echo "${1##*/}")
           otool=$(set -- "$TARGET_DIR"/bin/*-otool; echo "${1##*/}")
           printf '#include <stdio.h>\nint main(void){puts("ok");return 0;}\n' > /tmp/hello.c
-          for cc in x86_64-apple-$target-clang arm64-apple-$target-clang; do
+          for cc in "$x86_64_cc" "$arm64_cc"; do
             $cc /tmp/hello.c -o /tmp/hello-$cc
             $otool -L /tmp/hello-$cc
           done
           ls $TARGET_DIR/bin | wc -l
-          x86_64-apple-$target-clang --version | head -2
+          $x86_64_cc --version | head -2
           EOF
 
           chmod +x build_script.sh
