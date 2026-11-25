@@ -133,12 +133,14 @@ jobs:
           UNATTENDED=1 SDK_VERSION="$(echo $2 | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
 
           # Smoke test: compile and link a program for two targets, the way the
-          # README uses the toolchain (bin directory first in PATH)
+          # README uses the toolchain (bin directory first in PATH). The cctools
+          # of the stable flavor are installed under their target prefix only.
           export PATH=$TARGET_DIR/bin:$PATH
+          otool=$(set -- "$TARGET_DIR"/bin/*-otool; echo "${1##*/}")
           printf '#include <stdio.h>\nint main(void){puts("ok");return 0;}\n' > /tmp/hello.c
           for cc in o64-clang arm64-clang; do
             $cc /tmp/hello.c -o /tmp/hello-$cc
-            otool -L /tmp/hello-$cc
+            $otool -L /tmp/hello-$cc
           done
           ls $TARGET_DIR/bin | wc -l
           o64-clang --version | head -2
