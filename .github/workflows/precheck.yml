@@ -27,6 +27,9 @@ jobs:
           - sdk: 15-5
             ubuntu: 26.04
             runs-on: ubuntu-24.04-arm
+          - sdk: 14-0
+            ubuntu: 24.04
+            runs-on: ubuntu-latest
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -106,7 +109,9 @@ jobs:
           export IPHONEOS_DEPLOYMENT_TARGET=5.0
           UNATTENDED=1 SDK_VERSION="$(echo $2 | sed 's/-/./g')" JOBS=$(nproc) bash build.sh
 
-          # Smoke test: compile and link a program for two targets
+          # Smoke test: compile and link a program for two targets, the way the
+          # README uses the toolchain (bin directory first in PATH)
+          export PATH=$TARGET_DIR/bin:$PATH
           printf '#include <stdio.h>\nint main(void){puts("ok");return 0;}\n' > /tmp/hello.c
           for cc in o64-clang arm64-clang; do
             $TARGET_DIR/bin/$cc /tmp/hello.c -o /tmp/hello-$cc
