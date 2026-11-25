@@ -1,0 +1,33 @@
+name: Probe runner images
+
+# Answers, by running, which macOS images the account can use and which
+# Xcodes they carry. The labels are those of sdk.yml; add others on purpose.
+# Labels of the larger runners (macos-15-intel, macos-26-intel, ...) are
+# billed even in a public repository.
+
+on:
+  push:
+    branches:
+      - "probe/images*"
+
+jobs:
+  describe:
+    name: Probe ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - macos-15
+          - macos-26
+          - xcode-27
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Describe the image
+        run: |
+          uname -m
+          sw_vers
+          xcodebuild -version
+          ls /Applications | grep -E '^Xcode_[0-9.]+\.app$' | sort -V | tr '\n' ' '
+          echo
+          df -h / | tail -1
