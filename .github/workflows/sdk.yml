@@ -14,11 +14,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        macos_versions:
-          - 14
-          - 15
-          - 26
-    runs-on: macos-${{ matrix.macos_versions }}
+        runner:
+          - macos-15
+          - macos-26
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,15 +31,15 @@ jobs:
             sed 's|^for SDK in .*; do$|&\n[ -f "$WDIR/$SDK$SDK_EXT" ] \&\& continue|' tools/gen_sdk_package.sh | \
             XCODEDIR=/Applications/$xcode SDK_COMPRESSOR=xz bash
           done
-          mkdir -p sdk-${{ matrix.macos_versions }}
-          mv *.sdk.tar.xz sdk-${{ matrix.macos_versions }}
+          mkdir -p sdk-${{ matrix.runner }}
+          mv *.sdk.tar.xz sdk-${{ matrix.runner }}
 
       - name: Upload SDK
         id: upload_sdk
         uses: actions/upload-artifact@v4
         with:
-          name: sdk-${{ matrix.macos_versions }}
-          path: sdk-${{ matrix.macos_versions }}
+          name: sdk-${{ matrix.runner }}
+          path: sdk-${{ matrix.runner }}
           compression-level: 0
 
   collect_sdks:
