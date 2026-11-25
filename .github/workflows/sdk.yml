@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: package_sdk
     outputs:
-      SDK_VERSIONS: ${{ steps.get_all_sdk_versions.outputs.result }}
+      SDK_VERSIONS: ${{ steps.collect_sdk.outputs.sdk_versions }}
     steps:
       - name: Collect SDK
         id: collect_sdk
@@ -80,6 +80,10 @@ jobs:
               }
             }
 
+            // The artifact listing lags behind the uploads: listed right after
+            // the last upload, it can miss the newest artifacts. Report what
+            // was uploaded instead of listing it again.
+            const uploaded = [];
             const files = fs.readdirSync('.');
             for (const file of files) {
               if (!file.endsWith('.sdk.tar.xz') || (!file.startsWith('MacOSX'))) {
@@ -119,17 +123,8 @@ jobs:
               if (!success) {
                 throw new Error(`upload ${name} failed`);
               }
+
+              uploaded.push(name.replace(/^MacOSX/, ''));
             }
 
-      - name: Get all SDK Versions
-        id: get_all_sdk_versions
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { execSync } = require('child_process');
-            execSync('npm install @actions/artifact@2')
-            const { DefaultArtifactClient } = require('@actions/artifact');
-            const artifact = new DefaultArtifactClient();
-            const sdks = await artifact.listArtifacts();
-            const sdk_versions = sdks.artifacts.map(sdk => sdk.name).filter(name => !name.startsWith('sdk-') && !name.startsWith('apple-clang-'));
-            return sdk_versions;
+            core.setOutput('sdk_versions', JSON.stringify(uploaded));
