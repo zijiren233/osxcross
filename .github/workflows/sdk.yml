@@ -17,6 +17,7 @@ jobs:
         runner:
           - macos-15
           - macos-26
+          - xcode-27
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
