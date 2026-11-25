@@ -247,7 +247,21 @@ for SDK in "${SDKS[@]}"; do
 
   TMP=$(mktemp -d /tmp/XXXXXXXXXXX)
   SDK_PATH=$(cd -P -- "$SDK" && pwd -P)
-  cp -r "$SDK_PATH" "$TMP/$SDK"
+
+  # cp -r follows symbolic links. Since Xcode 26.2 the macOS SDK contains a
+  # link to its own directory (Ruby.framework/Versions/2.6/Headers/ruby/ruby),
+  # which cp reports as a cycle: it leaves the link out, copies the rest, and
+  # exits non-zero. Tolerate that diagnostic and fail on any other.
+  CP_ERRORS=$(mktemp /tmp/XXXXXXXXXXX)
+  cp -r "$SDK_PATH" "$TMP/$SDK" 2> "$CP_ERRORS" || true
+  cat "$CP_ERRORS" >&2
+
+  if grep -q -v -E ': directory causes a cycle$' "$CP_ERRORS"; then
+    rm -f "$CP_ERRORS"
+    exit 1
+  fi
+
+  rm -f "$CP_ERRORS"
 
   pushd "$XCODEDIR" &>/dev/null
 
