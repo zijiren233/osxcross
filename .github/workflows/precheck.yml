@@ -1,38 +1,67 @@
 name: Precheck
 
+# Runs on precheck/* branches, ahead of a release. The SDKs are packaged with
+# the workflow of the release and osxcross is built with the oldest, a middle
+# and the newest of them, so the build covers SDKs this release would add.
+# Apple Clang comes from the latest published release; a precheck of the
+# Apple Clang build is in precheck-clang.yml.
+
 on:
   push:
     branches:
       - "precheck/**"
 
+env:
+  PREVIOUS_RELEASE: v0.2.8
+
 jobs:
   package_sdks:
     uses: ./.github/workflows/sdk.yml
 
+  select_sdks:
+    name: Select SDKs
+    runs-on: ubuntu-latest
+    needs: package_sdks
+    outputs:
+      combinations: ${{ steps.select.outputs.combinations }}
+    steps:
+      - name: Select the oldest, a middle and the newest SDK
+        id: select
+        env:
+          SDK_VERSIONS: ${{ needs.package_sdks.outputs.SDK_VERSIONS }}
+        run: |
+          set -e
+          sorted=$(echo "$SDK_VERSIONS" | jq -r '.[]' | sort -t - -k 1,1n -k 2,2n)
+          count=$(echo "$sorted" | wc -l)
+          oldest=$(echo "$sorted" | head -n 1)
+          middle=$(echo "$sorted" | sed -n "$(( count > 1 ? count / 2 : 1 ))p")
+          newest=$(echo "$sorted" | tail -n 1)
+          combinations=$(jq -nc --arg oldest "$oldest" --arg middle "$middle" --arg newest "$newest" '
+            [
+              { sdk: $oldest, ubuntu: "24.04", arch: "x86_64" },
+              { sdk: $middle, ubuntu: "26.04", arch: "aarch64" },
+              { sdk: $newest, ubuntu: "20.04", arch: "x86_64" },
+              { sdk: $newest, ubuntu: "24.04", arch: "aarch64" }
+            ]')
+          echo "$combinations"
+          echo "combinations=$combinations" >> "$GITHUB_OUTPUT"
+
   build_osxcross:
-    name: Build osxcross
+    name: Build osxcross (${{ matrix.combination.sdk }}, ${{ matrix.combination.ubuntu }}, ${{ matrix.combination.arch }})
+    needs: select_sdks
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - sdk: 26-5
-            ubuntu: 24.04
-            runs-on: ubuntu-latest
-          - sdk: 26-5
-            ubuntu: 24.04
-            runs-on: ubuntu-24.04-arm
-          - sdk: 26-5
-            ubuntu: 20.04
-            runs-on: ubuntu-latest
-          - sdk: 15-5
-            ubuntu: 26.04
-            runs-on: ubuntu-24.04-arm
-          - sdk: 14-0
-            ubuntu: 24.04
-            runs-on: ubuntu-latest
-    runs-on: ${{ matrix.runs-on }}
+        combination: ${{ fromJSON(needs.select_sdks.outputs.combinations) }}
+    runs-on: ${{ matrix.combination.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download SDK
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.combination.sdk }}
+          path: tarballs
 
       - name: Create build script
         run: |
@@ -73,7 +102,7 @@ jobs:
           CLANG_DIR=$TARGET_DIR/clang
           mkdir -p $CLANG_DIR
 
-          # Apple Clang and SDK from the previous release
+          # Apple Clang from the latest published release
           if [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "amd64" ]; then
             ARCH=x86_64
           elif [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
@@ -82,15 +111,9 @@ jobs:
             echo "Unsupported architecture: $(uname -m)"
             exit 1
           fi
-          mkdir -p /osxcross/apple-clang /osxcross/tarballs
-          RELEASE=https://github.com/zijiren233/osxcross/releases/download/v0.2.8
-          curl -fsSL --retry 5 -o /osxcross/apple-clang/apple-clang.tar.gz \
-            $RELEASE/apple-clang-23-linux-$ARCH-gnu-ubuntu-$1.tar.gz
-          curl -fsSL --retry 5 -o /osxcross/tarballs/MacOSX$(echo $2 | sed 's/-/./g').sdk.tar.xz \
-            $RELEASE/MacOSX$(echo $2 | sed 's/-/./g').sdk.tar.xz
-
-          # Extract and setup Apple Clang
-          tar -xzf /osxcross/apple-clang/*.tar.gz -C $CLANG_DIR
+          curl -fsSL --retry 5 -o /tmp/apple-clang.tar.gz \
+            $3/apple-clang-23-linux-$ARCH-gnu-ubuntu-$1.tar.gz
+          tar -xzf /tmp/apple-clang.tar.gz -C $CLANG_DIR
           export PATH=$CLANG_DIR/bin:$PATH
 
           # Download and install CMake
@@ -114,11 +137,11 @@ jobs:
           export PATH=$TARGET_DIR/bin:$PATH
           printf '#include <stdio.h>\nint main(void){puts("ok");return 0;}\n' > /tmp/hello.c
           for cc in o64-clang arm64-clang; do
-            $TARGET_DIR/bin/$cc /tmp/hello.c -o /tmp/hello-$cc
-            $TARGET_DIR/bin/otool -L /tmp/hello-$cc
+            $cc /tmp/hello.c -o /tmp/hello-$cc
+            otool -L /tmp/hello-$cc
           done
           ls $TARGET_DIR/bin | wc -l
-          $TARGET_DIR/bin/o64-clang --version | head -2
+          o64-clang --version | head -2
           EOF
 
           chmod +x build_script.sh
@@ -126,11 +149,11 @@ jobs:
       - name: Build osxcross
         run: |
           for i in 1 2 3 4 5; do
-            docker pull 'ubuntu:${{ matrix.ubuntu }}' && break
+            docker pull 'ubuntu:${{ matrix.combination.ubuntu }}' && break
             echo "docker pull failed, retry $i in 60s"; sleep 60
           done
           docker run --rm \
             --volume "${PWD}:/osxcross" \
             --workdir /osxcross \
-            ubuntu:${{ matrix.ubuntu }} \
-            /bin/bash -c "/osxcross/build_script.sh '${{ matrix.ubuntu }}' '${{ matrix.sdk }}'"
+            ubuntu:${{ matrix.combination.ubuntu }} \
+            /bin/bash -c "/osxcross/build_script.sh '${{ matrix.combination.ubuntu }}' '${{ matrix.combination.sdk }}' 'https://github.com/${{ github.repository }}/releases/download/${{ env.PREVIOUS_RELEASE }}'"
